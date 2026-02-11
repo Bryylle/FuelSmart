@@ -139,7 +139,11 @@ export const iconRegistry = {
   heartFilled: require("@assets/icons/download/heart-filled.png"),
   caretDown: require("@assets/icons/download/caret-down.png"),
   caretUp: require("@assets/icons/download/caret-down.png"),
-  search: require("@assets/icons/search.png"),
+  medalGold: require("@assets/icons/download/medal-gold.png"),
+  medalSilver: require("@assets/icons/download/medal-silver.png"),
+  medalBronze: require("@assets/icons/download/medal-bronze.png"),
+  search: require("@assets/icons/download/search.png"),
+  information: require("@assets/icons/download/information.png"),
 }
 
 const $imageStyleBase: ImageStyle = {

@@ -22,7 +22,7 @@ const palette = {
   secondary400: "#626894",
   secondary500: "#41476E",
 
-  accent100: "#FFEED4",
+  accent100: "#1737ba",
   accent200: "#FFE1B2",
   accent300: "#FDD495",
   accent400: "#FBC878",
