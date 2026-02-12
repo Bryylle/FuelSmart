@@ -119,15 +119,6 @@ export const DemoDebugScreen: FC = function DemoDebugScreen() {
             onPress={() => setFuelPickerOpen(true)}
             rightIcon="caretRight"
             style={themed($listItemStyle)}
-            RightComponent={<Text size="xs" style={{ color: colors.palette.neutral500, marginRight: 8 }}>{dropdownText}</Text>}
-          />
-          <View style={themed($separator)} />
-          <ListItem
-            text="Search Distance"
-            onPress={() => setDistancePickerOpen(true)}
-            rightIcon="caretRight"
-            style={themed($listItemStyle)}
-            RightComponent={<Text size="xs" style={{ color: colors.palette.neutral500, marginRight: 8 }}>{searchDistance}</Text>}
           />
           <View style={themed($separator)} />
           <ListItem
