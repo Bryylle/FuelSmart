@@ -8,6 +8,7 @@ import {
 } from "react-native"
 import * as Clipboard from "expo-clipboard"
 import { formatDistanceToNow } from "date-fns"
+import * as Location from "expo-location"
 
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
@@ -18,6 +19,9 @@ import { colors } from "@/theme/colorsDark"
 
 import { supabase } from "@/services/supabase" 
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
+import { useAppTheme } from "@/theme/context"
+import { Header } from "@/components/Header"
+import type { ThemedStyle } from "@/theme/types"
 
 const FUEL_MARKER = require("@assets/images/fuel.png")
 const HAIRLINE = 1 / PixelRatio.get()
@@ -42,6 +46,18 @@ interface Station {
   [key: string]: any;
 }
 
+// Helper for distance calculation
+const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371 
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
 export const DemoCommunityScreen: FC = () => {
   const mapRef = useRef<any>(null)
   const [stations, setStations] = useState<Station[]>([])
@@ -49,14 +65,17 @@ export const DemoCommunityScreen: FC = () => {
   const [isMapReady, setIsMapReady] = useState(false)
   const [favorites, setFavorites] = useState<string[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [userLocation, setUserLocation] = useState<Location.LocationObjectCoords | null>(null)
 
   const [activeFuelType, setActiveFuelType] = useState<"gas" | "diesel">("gas")
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
   const [activeBrands, setActiveBrands] = useState<string[]>([]) 
+  const [activeDistance, setActiveDistance] = useState<number | null>(null)
 
   const [tempFuelType, setTempFuelType] = useState<"gas" | "diesel">("gas")
   const [tempMaxPrice, setTempMaxPrice] = useState<string>("")
   const [tempBrands, setTempBrands] = useState<string[]>([]) 
+  const [tempDistance, setTempDistance] = useState<number | null>(null)
 
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [isBrandPickerVisible, setIsBrandPickerVisible] = useState(false)
@@ -68,7 +87,12 @@ export const DemoCommunityScreen: FC = () => {
 
   useEffect(() => {
     const initialize = async () => {
-      // FIX: Use actual auth user instead of hardcoded
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({})
+        setUserLocation(location.coords)
+      }
+
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setCurrentUserId(user.id)
@@ -148,12 +172,19 @@ export const DemoCommunityScreen: FC = () => {
   const filteredStations = useMemo(() => {
     return stations.filter((s) => {
       if (activeBrands.length > 0 && !activeBrands.includes(s.brand)) return false
+      
       const price = activeFuelType === "gas" ? (s.regular_gas || 0) : (s.regular_diesel || 0)
       const limit = parseFloat(activeMaxPrice)
       if (!isNaN(limit) && limit > 0 && (price === 0 || price > limit)) return false
+
+      if (activeDistance && userLocation) {
+        const dist = getDistance(userLocation.latitude, userLocation.longitude, s.latitude, s.longitude)
+        if (dist > activeDistance) return false
+      }
+
       return true
     })
-  }, [stations, activeFuelType, activeMaxPrice, activeBrands])
+  }, [stations, activeFuelType, activeMaxPrice, activeBrands, activeDistance, userLocation])
 
   const handleMarkerPress = useCallback((station: Station) => {
     if (selectedStation?.id === station.id) return
@@ -164,9 +195,26 @@ export const DemoCommunityScreen: FC = () => {
     }, 100)
   }, [selectedStation])
 
-  const handleApplyAll = () => { setActiveFuelType(tempFuelType); setActiveMaxPrice(tempMaxPrice); setActiveBrands([...tempBrands]); setIsFilterVisible(false) }
-  const handleCancelFilters = () => { setTempFuelType(activeFuelType); setTempMaxPrice(activeMaxPrice); setTempBrands([...activeBrands]); setIsFilterVisible(false) }
-  const handleClearAll = () => { setTempFuelType("gas"); setTempMaxPrice(""); setTempBrands([]); setActiveFuelType("gas"); setActiveMaxPrice(""); setActiveBrands([]); }
+  const handleApplyAll = () => { 
+    setActiveFuelType(tempFuelType)
+    setActiveMaxPrice(tempMaxPrice)
+    setActiveBrands([...tempBrands])
+    setActiveDistance(tempDistance)
+    setIsFilterVisible(false) 
+  }
+  
+  const handleCancelFilters = () => { 
+    setTempFuelType(activeFuelType)
+    setTempMaxPrice(activeMaxPrice)
+    setTempBrands([...activeBrands])
+    setTempDistance(activeDistance)
+    setIsFilterVisible(false) 
+  }
+
+  const handleClearAll = () => { 
+    setTempFuelType("gas"); setTempMaxPrice(""); setTempBrands([]); setTempDistance(null);
+    setActiveFuelType("gas"); setActiveMaxPrice(""); setActiveBrands([]); setActiveDistance(null);
+  }
 
   const toggleFavorite = async () => {
     if (!selectedStation || !currentUserId) return
@@ -174,7 +222,6 @@ export const DemoCommunityScreen: FC = () => {
     if (!isFav && favorites.length >= 5) return Alert.alert("Limit Reached", "Max 5 favorites allowed.")
     const newFavs = isFav ? favorites.filter(id => id !== selectedStation.id) : [...favorites, selectedStation.id]
     
-    // FIX: Use currentUserId filter
     const { error } = await supabase
       .from('users')
       .update({ favorite_stations: newFavs })
@@ -194,27 +241,20 @@ export const DemoCommunityScreen: FC = () => {
   }
 
   const handleUpdatePrice = async () => {
-    // 1. Validation: Ensure we have the required IDs
     if (!selectedStation || !currentUserId) {
       Alert.alert("Error", "User or Station information is missing.");
       return;
     }
 
-    // 2. Helper: Clean the data before sending to SQL
-    // If the input is empty or invalid, we use the price currently in the DB
     const getValidPrice = (key: string) => {
       const input = reportPrices[key];
       const existing = Number(selectedStation[key]);
-      
-      // Check if input is a valid number and not an empty string
       if (input !== undefined && input.trim() !== "" && !isNaN(parseFloat(input))) {
         return parseFloat(input);
       }
-      // Fallback to what is already in the database (or 0 if null)
       return existing || 0;
     };
 
-    // 3. Prepare arguments (Must match your BEGIN...END function parameters exactly)
     const rpcData = {
       _station_id: selectedStation.id,
       _user_id: currentUserId,
@@ -227,18 +267,15 @@ export const DemoCommunityScreen: FC = () => {
 
     try {
       const { error } = await supabase.rpc('submit_fuel_report', rpcData);
-      
       if (error) {
-        console.error("Supabase RPC Error:", error.message, error.details);
         Alert.alert("Update Failed", error.message);
       } else {
         Alert.alert("Success", "Station prices updated!");
         setIsReporting(false);
         setSelectedStation(null);
-        fetchStations(); // Refresh the map/list
+        fetchStations();
       }
     } catch (err) {
-      console.error("Network/Catch Error:", err);
       Alert.alert("Error", "A connection error occurred.");
     }
   };
@@ -248,8 +285,10 @@ export const DemoCommunityScreen: FC = () => {
     Alert.alert("Copied", "Mobile number copied to clipboard.")
   }
 
+  const { themed } = useAppTheme()
+
   return (
-    <Screen preset="fixed" contentContainerStyle={{ flex: 1 }}>
+    <Screen contentContainerStyle={{ flex: 1 }}>
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -258,6 +297,7 @@ export const DemoCommunityScreen: FC = () => {
         initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
         onMapReady={() => setIsMapReady(true)}
         clusterColor={colors.palette.primary500}
+        mapPadding={{top: 200, left: 0, right:0, bottom: 0}}
       >
         {isMapReady && filteredStations.map((station) => (
           <Marker
@@ -271,12 +311,29 @@ export const DemoCommunityScreen: FC = () => {
         ))}
       </MapView>
 
+      <Header
+        title="Maps"
+        safeAreaEdges={["top"]} 
+        RightActionComponent={
+          <View style={$leftActionWrapper}>
+            <Pressable
+              accessibilityLabel="Go back"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Icon icon="back" size={24} color={"#fff"} />
+            </Pressable>
+          </View>
+        }
+        style={themed($headerStyle)}
+        titleStyle={themed($headerTitle)}
+      />
+
       <View style={$searchContainer}>
         <View style={$searchBar}>
           <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
             <Icon icon="search" color={colors.palette.primary500} size={20} />
             <Text style={$searchPlaceholder} numberOfLines={1}>
-              {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeFuelType.toUpperCase()}
+              {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance ? `${activeDistance}km` : "Any distance"}
             </Text>
           </Pressable>
         </View>
@@ -288,6 +345,17 @@ export const DemoCommunityScreen: FC = () => {
               {(["gas", "diesel"] as const).map(type => (
                 <TouchableOpacity key={type} style={[$segment, tempFuelType === type && $segmentActive]} onPress={() => setTempFuelType(type)}>
                   <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>{type === 'gas' ? 'Gasoline' : 'Diesel'}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Distance Radius</Text>
+            <View style={$segmentedControl}>
+              {([null, 5, 15, 50] as const).map((dist) => (
+                <TouchableOpacity key={String(dist)} style={[$segment, tempDistance === dist && $segmentActive]} onPress={() => setTempDistance(dist)}>
+                  <Text style={[$segmentText, tempDistance === dist && $segmentTextActive]}>
+                    {dist === null ? 'None' : `${dist}km`}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -327,10 +395,10 @@ export const DemoCommunityScreen: FC = () => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <div style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
               <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'white', fontWeight: 'bold' }}>Apply</Text></TouchableOpacity>
-            </div>
+            </View>
           </View>
         </View>
       </Modal>
@@ -353,11 +421,9 @@ export const DemoCommunityScreen: FC = () => {
               </View>
               <TouchableOpacity onPress={() => setIsUserInfoVisible(false)} style={$closeModalBtnSide}><Icon icon="x" size={20} color="#8E8E93" /></TouchableOpacity>
             </View>
-
             <View style={$nameSection}>
               <Text weight="bold" size="lg">{selectedStation?.users?.firstname || "System"} {selectedStation?.users?.lastname || "User"}</Text>
             </View>
-
             {(selectedStation?.users?.b_show_gcash || selectedStation?.users?.b_show_maya) && selectedStation?.users?.phone && (
               <TouchableOpacity style={$copyInfoContainerFull} onPress={() => handleCopyNumber(selectedStation?.users?.phone || "")}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
@@ -371,7 +437,6 @@ export const DemoCommunityScreen: FC = () => {
                 </View>
               </TouchableOpacity>
             )}
-
             <View style={$feedbackRowExpanded}>
               <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
                 <Icon icon="view" size={22} color="#FF3B30" />
@@ -415,7 +480,6 @@ export const DemoCommunityScreen: FC = () => {
                     <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
                       <View style={$priceGridContainer}>
                         {(() => {
-                          // FIX: Removed .toLowerCase()
                           const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
                           return Object.keys(config).map((key, index) => (
                             <View key={key} style={$dataEntry}>
@@ -454,8 +518,20 @@ export const DemoCommunityScreen: FC = () => {
     </Screen>
   )
 }
+const $headerStyle: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: "#1737ba",
+})
 
-const $searchContainer: ViewStyle = { position: "absolute", top: 60, left: 20, right: 20, zIndex: 10 }
+const $headerTitle: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: "#fff",
+})
+const $leftActionWrapper: ViewStyle = {
+  position: "relative",
+  justifyContent: "center",
+  alignItems: "center",
+  marginLeft: 16,
+}
+const $searchContainer: ViewStyle = { position: "absolute", top: 110, left: 20, right: 20, zIndex: 10 }
 const $searchBar: ViewStyle = { backgroundColor: "white", height: 50, borderRadius: 25, flexDirection: "row", alignItems: "center", paddingHorizontal: 15, elevation: 5 }
 const $searchPlaceholder: TextStyle = { flex: 1, marginLeft: 10, color: "#8E8E93", fontSize: 13 }
 const $filterDropdown: ViewStyle = { backgroundColor: "white", marginTop: 10, borderRadius: 20, padding: 20, elevation: 5 }

@@ -21,6 +21,9 @@ import { CalculatorScreen } from "@/screens/CalculatorScreen"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/1DemoShowroomScreen1"
 import { RegisterScreen } from "@/screens/RegisterScreen"
+import { TermsAndConditionsScreen } from "@/screens/TermsAndConditionsScreen"
+import { PrivacyScreen } from "@/screens/PrivacyScreen"
+// import { UpdateAccountDetailsScreen } from "@/screens/UpdateAccountDetailsScreen"
 
 /**
  * This is a list of all the route names that will exit the app if the back button
@@ -55,6 +58,9 @@ const AppStack = () => {
 
           <Stack.Screen name="Demo" component={DemoNavigator} />
           <Stack.Screen name="Calculator" component={CalculatorScreen} />
+          <Stack.Screen name="Privacy" component={PrivacyScreen} />
+          <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+          {/* <Stack.Screen name="UpdateAccountDetails" component={UpdateAccountDetailsScreen} /> */}
   
         </>
       ) : (
