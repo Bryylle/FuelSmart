@@ -82,11 +82,11 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
   // Services grid (renamed key -> serviceKey to avoid collisions with React's `key`)
   const services: ServiceItem[] = useMemo(
     () => [
-      { serviceKey: "parking", labelTx: "demoShowroomScreen:servicesParking", icon: "car" },
-      { serviceKey: "carWash", labelTx: "demoShowroomScreen:servicesCarWash", icon: "water" },
-      { serviceKey: "vulcanizing", labelTx: "demoShowroomScreen:servicesVulcanizing", icon: "wrench" },
-      { serviceKey: "towing", labelTx: "demoShowroomScreen:servicesTowing", icon: "truck" },
-      { serviceKey: "servicing", labelTx: "demoShowroomScreen:servicesServicing", icon: "settings" },
+      { serviceKey: "parking", labelTx: "demoShowroomScreen:servicesParking", icon: "parking" },
+      { serviceKey: "carWash", labelTx: "demoShowroomScreen:servicesCarWash", icon: "carWash" },
+      { serviceKey: "vulcanizing", labelTx: "demoShowroomScreen:servicesVulcanizing", icon: "tireRepair" },
+      { serviceKey: "towing", labelTx: "demoShowroomScreen:servicesTowing", icon: "towing" },
+      { serviceKey: "servicing", labelTx: "demoShowroomScreen:servicesServicing", icon: "carRepair" },
     ],
     [],
   )

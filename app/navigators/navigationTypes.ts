@@ -9,10 +9,10 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack"
 
 // Demo Tab Navigator types
 export type DemoTabParamList = {
-  DemoCommunity: undefined
+  Map: undefined
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
-  DemoDebug: undefined
-  DemoPodcastList: undefined
+  Profile: undefined
+  Favorites: undefined
   Calculator: undefined
   Home: undefined
   Register: undefined
@@ -22,7 +22,6 @@ export type DemoTabParamList = {
 
 // App Stack Navigator types
 export type AppStackParamList = {
-  Welcome: undefined
   Login: undefined
   Demo: NavigatorScreenParams<DemoTabParamList>
   Calculator: undefined

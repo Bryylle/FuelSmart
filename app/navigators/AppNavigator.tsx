@@ -11,15 +11,12 @@ import Config from "@/config"
 import { useAuth } from "@/context/AuthContext"
 import { ErrorBoundary } from "@/screens/ErrorScreen/ErrorBoundary"
 import { LoginScreen } from "@/screens/LoginScreen"
-import { WelcomeScreen } from "@/screens/WelcomeScreen"
 import { useAppTheme } from "@/theme/context"
 
 import { DemoNavigator } from "./DemoNavigator"
 import type { AppStackParamList, NavigationProps } from "./navigationTypes"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
 import { CalculatorScreen } from "@/screens/CalculatorScreen"
-import { HomeScreen } from "@/screens/HomeScreen"
-import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/1DemoShowroomScreen1"
 import { RegisterScreen } from "@/screens/RegisterScreen"
 import { TermsAndConditionsScreen } from "@/screens/TermsAndConditionsScreen"
 import { PrivacyScreen } from "@/screens/PrivacyScreen"
@@ -50,12 +47,10 @@ const AppStack = () => {
           backgroundColor: colors.background,
         },
       }}
-      initialRouteName={isAuthenticated ? "Welcome" : "Login"}
+      initialRouteName={isAuthenticated ? "Demo" : "Login"}
     >
       {isAuthenticated ? (
         <>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-
           <Stack.Screen name="Demo" component={DemoNavigator} />
           <Stack.Screen name="Calculator" component={CalculatorScreen} />
           <Stack.Screen name="Privacy" component={PrivacyScreen} />

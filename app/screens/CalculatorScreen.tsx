@@ -21,6 +21,7 @@ import type { ThemedStyle } from "@/theme/types"
 import { delay } from "@/utils/delay"
 import { Icon } from "@/components/Icon"
 import { colors } from "@/theme/colors"
+import { Header } from "@/components/Header"
 
 export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigation }) => {
   const { themed } = useAppTheme()
@@ -198,19 +199,24 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
 
   return (
     <Screen safeAreaEdges={["top"]} contentContainerStyle={$styles.flex1}>
-      <View style={themed($topRow)}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          accessibilityLabel="Go back"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={themed($backHit)}
-        >
-          <Icon icon="back" size={24} color={colors.tint} />
-        </Pressable>
-      </View>
-
+      <Header
+        title="Trip cost calculator"
+        safeAreaEdges={["top"]} 
+        LeftActionComponent={
+          <View style={$leftActionWrapper}>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              accessibilityLabel="Go back"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Icon icon="arrowLeft" size={24} color={"#fff"} />
+            </Pressable>
+          </View>
+        }
+        style={themed($headerStyle)}
+        titleStyle={themed($headerTitle)}
+      />
       <View style={themed($titleWrap)}>
-        <Text preset="heading" style={themed($title)}>Trip Cost Calculator</Text>
         <Text style={themed($tagline)}>Calculate the fuel needed and total cost for your trip.</Text>
       </View>
 
@@ -251,7 +257,19 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     </Screen>
   )
 }
+const $headerStyle: ThemedStyle<ViewStyle> = () => ({
+  backgroundColor: "#1737ba",
+})
 
+const $headerTitle: ThemedStyle<TextStyle> = () => ({
+  color: "#fff",
+})
+
+const $leftActionWrapper: ViewStyle = {
+  justifyContent: "center",
+  alignItems: "center",
+  marginLeft: 16,
+}
 const $input: ThemedStyle<TextStyle> = ({ colors }) => ({
   flex: 1,
   color: colors.text,
@@ -263,33 +281,16 @@ const $input: ThemedStyle<TextStyle> = ({ colors }) => ({
   borderWidth: 0,
 })
 
-const $topRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  alignItems: "center",
-  paddingHorizontal: spacing.lg,
-  paddingTop: spacing.xs,
-  marginBottom: spacing.xs,
-})
-
-const $backHit: ThemedStyle<ViewStyle> = ({}) => ({
-  paddingVertical: 2,
-  paddingRight: 8,
-})
-
 const $titleWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   paddingHorizontal: spacing.lg,
   marginBottom: spacing.xs,
 })
 
-const $title: ThemedStyle<TextStyle> = ({}) => ({
-  textAlign: "left",
-})
-
 const $tagline: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
   color: colors.textDim,
-  paddingHorizontal: spacing.lg,
-  marginTop: spacing.xs,
-  marginBottom: spacing.md,
+  paddingHorizontal: spacing.xxxs,
+  marginTop: spacing.md,
+  marginBottom: spacing.xs,
 })
 
 const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({
