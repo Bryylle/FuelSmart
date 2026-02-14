@@ -2,15 +2,15 @@ import { FC, useCallback, useEffect, useState } from "react"
 import {
   ActivityIndicator,
   FlatList,
-  ImageStyle,
-  TextStyle,
   View,
   ViewStyle,
+  TextStyle,
   TouchableOpacity,
   Linking,
   Alert,
   Modal,
   Image,
+  RefreshControl,
 } from "react-native"
 import Animated, {
   useAnimatedStyle,
@@ -24,7 +24,6 @@ import { EmptyState } from "@/components/EmptyState"
 import { Icon } from "@/components/Icon"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
-import { isRTL } from "@/i18n"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
@@ -35,47 +34,48 @@ import { supabase } from "@/services/supabase"
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
 
 export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => {
-  const { themed } = useAppTheme()
+  const { themed, theme: { colors } } = useAppTheme()
   const [favoriteStations, setFavoriteStations] = useState<any[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isError, setIsError] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-  // Local User Modal State
   const [showUserModal, setShowUserModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<any>(null)
 
   const fetchFavorites = useCallback(async () => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (!authUser) return
-      setCurrentUserId(authUser.id)
+      setIsError(false)
+      const { data: authData, error: authError } = await supabase.auth.getUser()
+      if (authError || !authData.user) throw new Error("Auth failed")
+      
+      setCurrentUserId(authData.user.id)
 
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('favorite_stations')
-        .eq('id', authUser.id)
+        .eq('id', authData.user.id)
         .single()
+      
+      if (userError) throw userError
 
       const favoriteIds = userData?.favorite_stations || []
 
       if (favoriteIds.length > 0) {
-        const { data: stations } = await supabase
+        const { data: stations, error: stationsError } = await supabase
           .from('fuel_stations')
-          .select(`
-            *, 
-            users:last_updated_by (*)
-          `)
+          .select(`*, users:last_updated_by (*)`)
           .in('id', favoriteIds)
-
-        if (stations) {
-          setFavoriteStations(stations)
-        }
+        
+        if (stationsError) throw stationsError
+        setFavoriteStations(stations || [])
       } else {
         setFavoriteStations([])
       }
     } catch (e) {
       console.error("Error fetching favorites:", e)
+      setIsError(true)
     }
   }, [])
 
@@ -86,45 +86,6 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
       setIsLoading(false)
     })()
   }, [fetchFavorites])
-
-  const openUserModal = (user: any) => {
-    setSelectedUser(user)
-    setShowUserModal(true)
-  }
-
-  const handleLikeUser = async (isLike: boolean) => {
-    if (!selectedUser || !currentUserId) return
-    if (selectedUser.id === currentUserId) return // Guard for self-interaction
-
-    try {
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('no_likes')
-        .eq('id', selectedUser.id)
-        .single()
-
-      const currentLikes = userProfile?.no_likes || 0
-      const newLikes = isLike ? currentLikes + 1 : Math.max(0, currentLikes - 1)
-
-      const { error } = await supabase
-        .from('users')
-        .update({ no_likes: newLikes })
-        .eq('id', selectedUser.id)
-
-      if (!error) {
-        setSelectedUser({ ...selectedUser, no_likes: newLikes })
-        // Update local list state so the modal stays synced if opened again
-        setFavoriteStations(prev => prev.map(item => {
-          if (item.users?.id === selectedUser.id) {
-            return { ...item, users: { ...item.users, no_likes: newLikes } }
-          }
-          return item
-        }))
-      }
-    } catch (e) {
-      console.error("Error updating likes:", e)
-    }
-  }
 
   const manualRefresh = async () => {
     setRefreshing(true)
@@ -139,26 +100,45 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
     if (!error) setFavoriteStations(prev => prev.filter(s => s.id !== stationId))
   }
 
+  const openUserModal = (user: any) => {
+    setSelectedUser(user)
+    setShowUserModal(true)
+  }
+
   return (
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$styles.flex1}>
       <FlatList
-        contentContainerStyle={themed([$styles.container, $listContentContainer])}
-        data={favoriteStations}
+        contentContainerStyle={[
+          themed([$styles.container, $listContentContainer]),
+          (favoriteStations.length === 0 || isError) && { flexGrow: 1, justifyContent: 'center' }
+        ]}
+        // If there's an error, pass an empty array to force ListEmptyComponent to show
+        data={isError ? [] : favoriteStations}
         refreshing={refreshing}
         onRefresh={manualRefresh}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={
-          isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : (
+          isLoading ? (
+            <ActivityIndicator size="large" color={colors.palette.primary500} />
+          ) : (
             <EmptyState
               preset="generic"
-              style={themed($emptyState)}
-              heading="No Favorites Yet"
-              content="Add gas stations to your favorites to see them here."
+              style={{ marginTop: 0 }}
+              heading={isError ? "Connection Error" : "No Favorites Yet"}
+              content={isError 
+                ? "Cannot load your favorites. Please check your internet connection and pull down to refresh." 
+                : "Add gas stations to your favorites to see them here."
+              }
+              button="Refresh"
               buttonOnPress={manualRefresh}
             />
           )
         }
-        ListHeaderComponent={<View style={themed($heading)}><Text preset="heading" text="Favorite Stations" /></View>}
+        ListHeaderComponent={(!isError && favoriteStations.length > 0) ? (
+          <View style={themed($heading)}>
+            <Text preset="heading" text="Favorite Stations" />
+          </View>
+        ) : null}
         renderItem={({ item }) => (
           <StationCard 
             station={item} 
@@ -168,7 +148,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
         )}
       />
 
-      {/* Contributor Modal */}
+      {/* User Modal */}
       <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
         <TouchableOpacity style={$modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
           <View style={$modalContent}>
@@ -186,32 +166,10 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
                   <Text style={{ color: "#666", fontSize: 14 }}>Rank: Gold Contributor</Text>
                 </View>
              </View>
-
              <View style={$statsRow}>
-                <View style={$statBox}>
-                  <Text weight="bold" style={$statValue}>{selectedUser?.no_contributions || 0}</Text>
-                  <Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text>
-                </View>
-                <View style={$statBox}>
-                  <Text weight="bold" style={$statValue}>{selectedUser?.no_likes || 0}</Text>
-                  <Text size="xxs" style={$statLabel}>LIKES</Text>
-                </View>
+                <View style={$statBox}><Text weight="bold" style={$statValue}>{selectedUser?.no_contributions || 0}</Text><Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text></View>
+                <View style={$statBox}><Text weight="bold" style={$statValue}>{selectedUser?.no_likes || 0}</Text><Text size="xxs" style={$statLabel}>LIKES</Text></View>
              </View>
-
-             {/* Only show Like/Dislike if not viewing own profile */}
-             {selectedUser?.id !== currentUserId && (
-               <View style={$actionRow}>
-                 <TouchableOpacity style={[$actionBtn, { backgroundColor: '#E8F5E9' }]} onPress={() => handleLikeUser(true)}>
-                    <Icon icon="heart" size={24} color="#4CAF50" />
-                    <Text style={{ color: "#4CAF50", fontWeight: 'bold', marginLeft: 8 }}>Like</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity style={[$actionBtn, { backgroundColor: '#FFEBEE' }]} onPress={() => handleLikeUser(false)}>
-                    <Icon icon="close" size={24} color="#F44336" />
-                    <Text style={{ color: "#F44336", fontWeight: 'bold', marginLeft: 8 }}>Dislike</Text>
-                 </TouchableOpacity>
-               </View>
-             )}
-
              <TouchableOpacity style={$closeBtn} onPress={() => setShowUserModal(false)}>
                 <Text style={{ color: "white", fontWeight: "600" }}>Close</Text>
              </TouchableOpacity>
@@ -236,14 +194,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
   }
 
   const animatedStyle = useAnimatedStyle(() => ({ height: height.value, overflow: "hidden" }))
-
-  const getRankColor = (contributions: number = 0) => {
-    if (contributions <= 30) return "#4CD964"
-    if (contributions <= 50) return "#007AFF"
-    if (contributions <= 70) return "#AF52DE"
-    return "#FFD700"
-  }
-
+  const getRankColor = (contributions: number = 0) => contributions > 70 ? "#FFD700" : "#4CD964"
   const fuelConfig = FUEL_BRAND_MAP[station.brand] || FUEL_BRAND_MAP["Default"]
 
   return (
@@ -263,7 +214,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
             {station.users && (
               <TouchableOpacity onPress={() => onPressUser(station.users)}>
                 <Text size="xxs" style={[{ color: getRankColor(station.users.no_contributions), fontWeight: 'bold' }, $metadataText]}>
-                  {" "}by {station.users.b_show_firstname ? station.users.firstname : `${station.users.firstname} ${station.users.lastname || ""}`}
+                  {" "}by {station.users.firstname}
                 </Text>
               </TouchableOpacity>
             )}
@@ -297,7 +248,6 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
   )
 }
 
-// #region Styles
 const $cardHeader: ViewStyle = { marginBottom: 8 }
 const $titleRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }
 const $stationName: TextStyle = { flex: 1 }
@@ -315,8 +265,6 @@ const $topRightButton: ViewStyle = { paddingLeft: 8 }
 const $listContentContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ paddingHorizontal: spacing.lg, paddingTop: spacing.lg + spacing.xl, paddingBottom: spacing.lg })
 const $heading: ThemedStyle<ViewStyle> = ({ spacing }) => ({ marginBottom: spacing.md })
 const $item: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({ padding: spacing.md, marginTop: spacing.md, backgroundColor: colors.palette.neutral100, borderRadius: 20 })
-const $emptyState: ThemedStyle<ViewStyle> = ({ spacing }) => ({ marginTop: spacing.xxl })
-
 const $modalOverlay: ViewStyle = { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }
 const $modalContent: ViewStyle = { backgroundColor: "white", width: "90%", borderRadius: 24, padding: 24 }
 const $profileHeader: ViewStyle = { flexDirection: "row", alignItems: "center", marginBottom: 20 }
@@ -328,7 +276,4 @@ const $statsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7",
 const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
 const $statValue: TextStyle = { color: "#1C1C1E", fontSize: 18 }
 const $statLabel: TextStyle = { color: "#8E8E93", marginTop: 4 }
-const $actionRow: ViewStyle = { flexDirection: 'row', gap: 12, marginBottom: 20 }
-const $actionBtn: ViewStyle = { flex: 1, flexDirection: 'row', height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }
 const $closeBtn: ViewStyle = { backgroundColor: "#1737ba", paddingVertical: 14, borderRadius: 16, alignItems: "center" }
-// #endregion

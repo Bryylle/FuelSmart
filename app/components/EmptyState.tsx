@@ -125,7 +125,7 @@ export function EmptyState(props: EmptyStateProps) {
 
   const EmptyStatePresets = {
     generic: {
-      imageSource: sadFace,
+      // imageSource: sadFace,
       heading: translate("emptyStateComponent:generic.heading"),
       content: translate("emptyStateComponent:generic.content"),
       button: translate("emptyStateComponent:generic.button"),
