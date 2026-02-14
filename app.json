@@ -23,7 +23,10 @@
     },
     "allowBackup": false,
     "edgeToEdgeEnabled": true,
-    "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    "permissions": [
+      "ACCESS_FINE_LOCATION",
+      "ACCESS_COARSE_LOCATION"
+    ]
   },
   "ios": {
     "icon": "./assets/images/app-icon-ios.png",
@@ -63,6 +66,9 @@
   "extra": {
     "ignite": {
       "version": "11.4.0"
+    },
+    "eas": {
+      "projectId": "4cd8ff8a-f186-44c0-bb76-753c9bd6cd36"
     }
   }
 }
