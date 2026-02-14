@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
   ColorValue,
+  Linking, //
 } from "react-native"
 
 import { Screen } from "@/components/Screen"
@@ -23,12 +24,6 @@ import { translate } from "@/i18n/translate"
 
 import type { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useNavigation } from "@react-navigation/native"
-/**
- * DemoShowroomScreen (Refactored for international app)
- * - Clean architecture: CTA → Forecast → News → Services
- * - Accessible, RTL-aware, i18n-friendly, themed
- * - Removed unused code from the old showroom/drawer logic
- */
 
 type ServiceItem = {
   serviceKey: string
@@ -41,16 +36,13 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
 ) {
   const { themed, theme } = useAppTheme()
   const { colors } = theme
-  // 👇 Add this line
   const navigation = useNavigation<any>()
 
-  // Local UI state (replace with real data bindings later)
   const [isLoadingPrices] = useState<boolean>(false)
   const [isLoadingNews] = useState<boolean>(false)
   const [hasErrorPrices] = useState<boolean>(false)
   const [hasErrorNews] = useState<boolean>(false)
 
-  // Example forecast deltas (replace with fetched values)
   const forecastData = !hasErrorPrices
     ? [
         { fuel: "gasoline" as const, delta: 0.5 },
@@ -59,12 +51,10 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
       ]
     : []
 
-  // Example news payload (replace with fetched content)
   const ltoNewsHeadline = ""
 
-  // Handlers (wire to navigation/services)
   const onComputeTripPress = useCallback(() => {
-    navigation.navigate("Calculator") // Example
+    navigation.navigate("Calculator")
   }, [navigation])
 
   const onOpenForecastLink = useCallback(() => {
@@ -75,11 +65,20 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     // Linking.openURL("https://www.facebook.com/ltoph")
   }, [])
 
-  const onFindService = useCallback((serviceKey: string) => {
-    // navigation.navigate("Nearby", { category: serviceKey })
+  // Refactored to handle Map Redirection
+  const onFindService = useCallback((labelTx: TxKeyPath) => {
+    const query = translate(labelTx)
+    const url = Platform.select({
+      ios: `maps:0,0?q=${query}`,
+      android: `geo:0,0?q=${query}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${query}`,
+    })
+
+    if (url) {
+      Linking.openURL(url).catch((err) => console.error("Error opening maps", err))
+    }
   }, [])
 
-  // Services grid (renamed key -> serviceKey to avoid collisions with React's `key`)
   const services: ServiceItem[] = useMemo(
     () => [
       { serviceKey: "parking", labelTx: "demoShowroomScreen:servicesParking", icon: "parking" },
@@ -93,7 +92,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
 
   const formatDelta = (d: number) => `${d >= 0 ? "+" : ""}${d.toFixed(2)} / L`
 
-  // UI helpers
   const Grid: FC<{ children: React.ReactNode }> = ({ children }) => (
     <View style={themed($grid)} accessibilityRole="list">
       {children}
@@ -106,9 +104,9 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     icon: string
   }
 
-  const ServiceTile: FC<ServiceTileProps> = ({ serviceKey, labelTx, icon }) => (
+  const ServiceTile: FC<ServiceTileProps> = ({ labelTx, icon }) => (
     <Pressable
-      onPress={() => onFindService(serviceKey)}
+      onPress={() => onFindService(labelTx)}
       style={({ pressed }) => [themed($serviceTile), pressed && { opacity: 0.85 }]}
       android_ripple={
         Platform.OS === "android"
@@ -117,9 +115,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
       }
       accessibilityRole="button"
       accessibilityLabel={translate(labelTx)}
-      accessibilityHint={translate("demoShowroomScreen:commonOpens")}
-      testID={`service-${serviceKey}`}
-      hitSlop={8}
     >
       <View style={themed($serviceIconWrap)}>
         <Icon icon={icon as any} size={22} color={colors.tint} />
@@ -167,7 +162,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           onPress={onPressLink}
           accessibilityRole="link"
           accessibilityLabel={translate(linkTx)}
-          hitSlop={8}
           style={themed($headerLinkWrap)}
         >
           <Text size="xs" style={themed($headerLinkText)} tx={linkTx} />
@@ -196,7 +190,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Nearby Services */}
         <SectionCard testID="services-card">
           <SectionHeader titleTx="demoShowroomScreen:servicesTitle" />
           <Grid>
@@ -206,7 +199,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           </Grid>
         </SectionCard>
 
-        {/* Oil Price Forecast */}
         <SectionCard testID="forecast-card">
           <SectionHeader
             titleTx="demoShowroomScreen:forecastTitle"
@@ -243,7 +235,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           )}
         </SectionCard>
 
-        {/* LTO News */}
         <SectionCard testID="lto-card">
           <SectionHeader titleTx="demoShowroomScreen:ltoTitle" onPressLink={onOpenNews} linkTx="demoShowroomScreen:viewMore" />
           {isLoadingNews ? (
@@ -262,7 +253,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           )}
         </SectionCard>
 
-        {/* CTA */}
         <SectionCard testID="cta-card">
           <Text preset="subheading" style={themed($ctaTitle)} tx="demoShowroomScreen:planTripTitle" />
           <Text size="sm" style={themed($ctaSubtitle)} tx="demoShowroomScreen:planTripSubtitle" />
@@ -277,9 +267,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
   )
 }
 
-/**
- * Styles
- */
 const $container: ThemedStyle<ViewStyle> = () => ({
   paddingTop: 0,
 })
