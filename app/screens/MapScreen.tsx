@@ -398,9 +398,7 @@ export const MapScreen: FC = () => {
         titleStyle={themed($headerTitle)}
       />
       {isNotAtMarkerLevel && (
-        <View 
-          style={$markerLevelButtonWrapper}
-        >
+        <View style={$markerLevelButtonWrapper}>
           <TouchableOpacity 
             style={$markerLevelPill} 
             onPress={zoomToMarkerVisibleLevel}
@@ -461,6 +459,20 @@ export const MapScreen: FC = () => {
             </View>
           </Animated.View>
         )}
+      </View>
+
+      {/* Attribution Layer */}
+      <View style={$attributionContainer}>
+        <View style={{ flex: 1 }} /> 
+        <TouchableOpacity 
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL("https://www.openstreetmap.org/copyright")}
+          style={$attributionBackground}
+        >
+          <Text style={$attributionText}>
+            © <Text style={$linkText}>OpenStreetMap</Text> contributors
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <Modal visible={isBrandPickerVisible} transparent animationType="fade" onRequestClose={() => setIsBrandPickerVisible(false)}>
@@ -611,9 +623,35 @@ export const MapScreen: FC = () => {
     </Screen>
   )
 }
+const $attributionContainer: ViewStyle = {
+  position: "absolute",
+  bottom: 8, // Levels it horizontally with the Google logo
+  left: 10,
+  right: 10,
+  flexDirection: "row",
+  alignItems: "center",
+  pointerEvents: "box-none",
+}
+
+const $attributionBackground: ViewStyle = {
+  backgroundColor: "rgba(255, 255, 255, 0.7)",
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 2,
+}
+
+const $attributionText: TextStyle = {
+  fontSize: 10, // Increased by 2px
+  color: "#444",
+}
+
+const $linkText: TextStyle = {
+  fontSize: 11, // Increased by 2px
+  color: "#007AFF", // Standard iOS-style link blue
+}
 const $markerLevelButtonWrapper: ViewStyle = {
   position: "absolute",
-  bottom: 30, // Sit above the station card
+  bottom: 40, // Sit above the station card
   alignSelf: "center", // Center it to make it look like a "Search this area" button
   zIndex: 99,
 }
