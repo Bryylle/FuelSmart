@@ -12,8 +12,7 @@ import * as Location from "expo-location"
 
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
-import MapView from "react-native-map-clustering"
-import { PROVIDER_GOOGLE, Marker } from "react-native-maps"
+import MapView, { PROVIDER_GOOGLE, Marker } from "react-native-maps"
 import { Icon } from "@/components/Icon"
 import { colors } from "@/theme/colorsDark"
 
@@ -60,12 +59,13 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 
 export const MapScreen: FC = () => {
   const mapRef = useRef<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const [isMapReady, setIsMapReady] = useState(false)
   const [favorites, setFavorites] = useState<string[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userLocation, setUserLocation] = useState<Location.LocationObjectCoords | null>(null)
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null)
 
   const [activeFuelType, setActiveFuelType] = useState<"gas" | "diesel">("gas")
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
@@ -85,41 +85,56 @@ export const MapScreen: FC = () => {
   const [isUserInfoVisible, setIsUserInfoVisible] = useState(false)
   const [isVoting, setIsVoting] = useState(false)
 
+  // 1. Update the initialization useEffect to restore Auth
   useEffect(() => {
     const initialize = async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync()
+      let { status } = await Location.requestForegroundPermissionsAsync()
       if (status === 'granted') {
-        const location = await Location.getCurrentPositionAsync({})
-        setUserLocation(location.coords)
+        let location = await Location.getCurrentPositionAsync({})
+        setUserLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        })
       }
 
+      // RESTORED: Get the logged in user
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setCurrentUserId(user.id)
         fetchUserFavorites(user.id)
       }
-      fetchStations()
     }
     initialize()
   }, [])
 
+  useEffect(() => {
+    if (userLocation) {
+      fetchStations()
+    }
+  }, [userLocation])
+
   const fetchStations = async () => {
+    if (!userLocation) return
     try {
-      const { data, error } = await supabase.from('fuel_stations').select(`
-        *, 
-        users:last_updated_by (id, firstname, lastname, phone, no_contributions, no_likes, no_dislikes, b_show_gcash, b_show_maya)
-      `)
-      
+      setIsLoading(true)
+      const { data, error } = await supabase.rpc('get_stations_in_radius', {
+        user_lat: userLocation.latitude,
+        user_lon: userLocation.longitude,
+        radius_km: 120 
+      })
+
       if (error) throw error
 
       const formattedData = data?.map((station: any) => ({
         ...station,
-        users: Array.isArray(station.users) ? station.users[0] : station.users
+        users: (station.users && station.users.id) ? station.users : null
       }))
 
       setStations(formattedData || [])
-    } catch (e) { 
-      console.error("Fetch Error:", e) 
+    } catch (e) {
+      console.error("Fetch Error:", e)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -287,6 +302,27 @@ export const MapScreen: FC = () => {
 
   const { themed } = useAppTheme()
 
+  // Track the current region as the user moves the map
+  const [region, setRegion] = useState({
+    latitude: 12.8797,
+    longitude: 121.7740,
+    latitudeDelta: 15,
+    longitudeDelta: 15,
+  })
+
+  const MAP_STYLE = [
+    {
+      featureType: "poi",
+      elementType: "all", // This covers labels AND icons
+      stylers: [{ visibility: "off" }],
+    },
+    {
+      featureType: "transit",
+      elementType: "all",
+      stylers: [{ visibility: "off" }],
+    }
+  ]
+
   return (
     <Screen contentContainerStyle={{ flex: 1 }}>
       <MapView
@@ -294,15 +330,19 @@ export const MapScreen: FC = () => {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         showsUserLocation={true}
-        initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
+        // initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
         onMapReady={() => setIsMapReady(true)}
-        clusterColor={colors.palette.primary500}
         mapPadding={{top: 200, left: 0, right:0, bottom: 0}}
         toolbarEnabled={false}
+        initialRegion={region}
+        customMapStyle={MAP_STYLE}
+        onRegionChangeComplete={(newRegion) => {
+          setRegion(newRegion)
+        }}
       >
-        {isMapReady && filteredStations.map((station) => (
+        {region.latitudeDelta < 0.05 && filteredStations.map((station) => (
           <Marker
-            key={station.id}
+            key={`marker-${station.id}-${station.updated_at}`}
             coordinate={{ latitude: Number(station.latitude), longitude: Number(station.longitude) }}
             onPress={() => handleMarkerPress(station)}
             onSelect={() => handleMarkerPress(station)}
@@ -461,7 +501,7 @@ export const MapScreen: FC = () => {
                     <Text weight="bold" size="md">{selectedStation?.brand}</Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
                       <Text size="xxs" style={{ opacity: 0.6 }}>{selectedStation?.city} • {selectedStation ? formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : ""}</Text>
-                      {selectedStation?.users ? (
+                      {selectedStation?.users?.id ? (
                         <TouchableOpacity onPress={() => setIsUserInfoVisible(true)}>
                           <Text size="xxs" style={{ color: getRankColor(selectedStation.users.no_contributions), fontWeight: 'bold' }}>{" "}by {selectedStation.b_show_firstname ? selectedStation.users.firstname : `${selectedStation.users.firstname} ${selectedStation.users.lastname || ""}`}</Text>
                         </TouchableOpacity>
