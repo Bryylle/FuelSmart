@@ -21,6 +21,7 @@ import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
 import { useAppTheme } from "@/theme/context"
 import { Header } from "@/components/Header"
 import type { ThemedStyle } from "@/theme/types"
+import Slider from '@react-native-community/slider'
 
 const FUEL_MARKER = require("@assets/icons/marker_isolated.png")
 const HAIRLINE = 1 / PixelRatio.get()
@@ -70,12 +71,12 @@ export const MapScreen: FC = () => {
   const [activeFuelType, setActiveFuelType] = useState<"gas" | "diesel">("gas")
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
   const [activeBrands, setActiveBrands] = useState<string[]>([]) 
-  const [activeDistance, setActiveDistance] = useState<number | null>(null)
+  const [activeDistance, setActiveDistance] = useState<number | null>(120) // Default to 120
 
   const [tempFuelType, setTempFuelType] = useState<"gas" | "diesel">("gas")
   const [tempMaxPrice, setTempMaxPrice] = useState<string>("")
   const [tempBrands, setTempBrands] = useState<string[]>([]) 
-  const [tempDistance, setTempDistance] = useState<number | null>(null)
+  const [tempDistance, setTempDistance] = useState<number | null>(120) // Default to 120
 
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [isBrandPickerVisible, setIsBrandPickerVisible] = useState(false)
@@ -214,7 +215,7 @@ export const MapScreen: FC = () => {
     // Check if active values differ from their original defaults
     const isFuelChanged = activeFuelType !== "gas"
     const isPriceChanged = activeMaxPrice !== ""
-    const isDistanceChanged = activeDistance !== null
+    const isDistanceChanged = activeDistance !== 120 && activeDistance !== null
     const isBrandsChanged = activeBrands.length > 0
 
     return isFuelChanged || isPriceChanged || isDistanceChanged || isBrandsChanged
@@ -236,21 +237,17 @@ export const MapScreen: FC = () => {
     setIsFilterVisible(false) 
   }
 
+  // Update handleClearAll to reset to 120
   const handleClearAll = () => { 
-    // Reset the temporary UI state
     setTempFuelType("gas")
     setTempMaxPrice("")
     setTempBrands([])
-    setTempDistance(null)
+    setTempDistance(120) // Reset to 120
     
-    // Reset the actual active filters used by the map
     setActiveFuelType("gas")
     setActiveMaxPrice("")
     setActiveBrands([])
-    setActiveDistance(null)
-    
-    // Optional: Close the filter if you want
-    // setIsFilterVisible(false) 
+    setActiveDistance(120) // Reset to 120
   }
 
   const toggleFavorite = async () => {
@@ -414,7 +411,7 @@ export const MapScreen: FC = () => {
           <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
             <Icon icon="search" color={colors.palette.primary500} size={24} />
             <Text style={$searchPlaceholder} numberOfLines={1}>
-              {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance ? `${activeDistance}km` : "Any distance"}
+              {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance}km radius
             </Text>
             {hasFilterApplied && (
               <PressableIcon icon="close" size={24} onPress={handleClearAll}/>
@@ -433,15 +430,29 @@ export const MapScreen: FC = () => {
               ))}
             </View>
 
-            <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Distance Radius</Text>
-            <View style={$segmentedControl}>
-              {([null, 5, 15, 50] as const).map((dist) => (
-                <TouchableOpacity key={String(dist)} style={[$segment, tempDistance === dist && $segmentActive]} onPress={() => setTempDistance(dist)}>
-                  <Text style={[$segmentText, tempDistance === dist && $segmentTextActive]}>
-                    {dist === null ? 'None' : `${dist}km`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={{ marginTop: 15 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text weight="bold" size="xs">Distance Radius</Text>
+                <Text weight="bold" size="xs" style={{ color: colors.palette.primary500 }}>
+                  {tempDistance} km
+                </Text>
+              </View>
+              
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={1}
+                maximumValue={120}
+                step={1}
+                value={tempDistance || 120}
+                onValueChange={(val: number) => setTempDistance(val)}
+                minimumTrackTintColor={colors.palette.primary500}
+                maximumTrackTintColor="#D1D1D6"
+                thumbTintColor={colors.palette.primary500}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -8 }}>
+                <Text size="xxs" style={{ color: '#8E8E93' }}>1km</Text>
+                <Text size="xxs" style={{ color: '#8E8E93' }}>120km</Text>
+              </View>
             </View>
 
             <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brands</Text>
