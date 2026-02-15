@@ -1,3 +1,8 @@
+import { supabase } from "@/services/supabase"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+
+const CACHE_KEY = "fuel_brand_configs_cache"
+
 export interface FuelBrandConfig {
   regular_gas?: string
   premium_gas?: string
@@ -7,140 +12,48 @@ export interface FuelBrandConfig {
   [key: string]: string | undefined 
 }
 
-export const FUEL_BRAND_MAP: Record<string, FuelBrandConfig> = {
-  "Shell": {
-    regular_gas: "FuelSave 91",
-    premium_gas: "FuelSave 95",
-    sports_gas: "V-Power Racing",
-    regular_diesel: "Shell FuelSave Diesel",
-    premium_diesel: "Shell V-Power Diesel",
-  },
-  "Petron": {
-    regular_gas: "Xtra Advance",
-    premium_gas: "XCS",
-    sports_gas: "Blaze 100",
-    regular_diesel: "Diesel Max",
-    premium_diesel: "Turbo Diesel",
-  },
-  "Caltex": {
-    regular_gas: "Silver",
-    premium_gas: "Platinum",
-    regular_diesel: "Diesel",
-  },
-  "SeaOil": {
-    regular_gas: "Extreme U",
-    premium_gas: "Extreme 95",
-    regular_diesel: "Exceed Diesel",
-  },
-  "Phoenix": {
-    regular_gas: "Super",
-    premium_gas: "Premium",
-    sports_gas: "Premium 98",
-    regular_diesel: "Diesel",
-  },
-  "Jetti": {
-    regular_gas: "Accelrate",
-    premium_gas: "XPremium",
-    regular_diesel: "Diesel",
-  },
-  "Flying V": {
-    regular_gas: "Volt",
-    premium_gas: "Thunder",
-    sports_gas: "DeciVel", // ??
-    regular_diesel: "Diesel",
-  },
-  "PTT": {
-    regular_gas: "Eco+ Gasoline",
-    premium_gas: "Power+ Gasoline",
-    regular_diesel: "Save+ Diesel",
-  },
-  "IFuel": {
-    regular_gas: "iGas 91",
-    premium_gas: "iGaz 95",
-    regular_diesel: "Diesel",
-  },
-  "Orient Fuel": {
-    regular_gas: "Eco Gas",
-    premium_gas: "Superior",
-    regular_diesel: "Diesel",
-  },
-  "Star Oil": {
-    regular_gas: "Super 93",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "Diatoms Fuel": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "1st Auto Gas": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "BLU ENERGY": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "C3 Fuels brand": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "Drelex": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "FerC Fuels": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "Fuel Tech": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "GSC": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "LKB": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "Light Fuels": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "M-Oil": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "Tech Fuel": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  "RePhil": {
-    regular_gas: "Regular",
-    premium_gas: "Premium",
-    regular_diesel: "Diesel",
-  },
-  // "Default": {
-  //   regular_gas: "Regular Gas",
-  //   premium_gas: "Premium Gas",
-  //   sports_gas: "Sports Gas",
-  //   regular_diesel: "Regular Diesel",
-  //   premium_diesel: "Premium Diesel",
-  //   mc_regular_gas: "MC Regular",
-  //   mc_premium_gas: "MC Premium",
-  // }
+// Keep the original export name so other screens don't break
+// We initialize it with an empty object or your most common defaults
+export let FUEL_BRAND_MAP: Record<string, FuelBrandConfig> = {}
+
+/**
+ * Call this once at App startup or in MapScreen's useEffect.
+ * It loads from cache immediately, then refreshes from DB.
+ */
+export const initFuelMappings = async () => {
+  try {
+    // 1. Load from cache first for immediate availability
+    const cached = await AsyncStorage.getItem(CACHE_KEY)
+    if (cached) {
+      Object.assign(FUEL_BRAND_MAP, JSON.parse(cached))
+    }
+
+    // 2. Fetch fresh data from Supabase
+    const { data, error } = await supabase
+      .from('fuel_brand_configs')
+      .select('brand_name, regular_gas_label, premium_gas_label, sports_gas_label, regular_diesel_label, premium_diesel_label')
+
+    if (error) throw error
+
+    // 3. Transform to the original Record format
+    const freshMappings = data.reduce((acc, curr) => {
+      acc[curr.brand_name] = {
+        regular_gas: curr.regular_gas_label ?? undefined,
+        premium_gas: curr.premium_gas_label ?? undefined,
+        sports_gas: curr.sports_gas_label ?? undefined,
+        regular_diesel: curr.regular_diesel_label ?? undefined,
+        premium_diesel: curr.premium_diesel_label ?? undefined,
+      }
+      return acc
+    }, {} as Record<string, FuelBrandConfig>)
+
+    // 4. Update the exported object reference and Cache
+    Object.assign(FUEL_BRAND_MAP, freshMappings)
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(freshMappings))
+    
+    return FUEL_BRAND_MAP
+  } catch (e) {
+    console.error("Error syncing fuel mappings:", e)
+    return FUEL_BRAND_MAP
+  }
 }

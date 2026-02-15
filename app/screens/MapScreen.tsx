@@ -17,7 +17,7 @@ import { Icon, PressableIcon } from "@/components/Icon"
 import { colors } from "@/theme/colorsDark"
 
 import { supabase } from "@/services/supabase" 
-import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
+import { initFuelMappings, FUEL_BRAND_MAP } from "../utils/fuelMappings"
 import { useAppTheme } from "@/theme/context"
 import { Header } from "@/components/Header"
 import type { ThemedStyle } from "@/theme/types"
@@ -30,7 +30,9 @@ interface Station {
   id: string; brand: string; city: string; latitude: number; longitude: number;
   regular_gas?: number; premium_gas?: number; sports_gas?: number;
   regular_diesel?: number; premium_diesel?: number; 
-  updated_at: string; is_verified: boolean; b_show_firstname: boolean; 
+  updated_at: string; is_verified: boolean; b_show_firstname: boolean;
+  reporter_id?: string; // For pending stations
+  isPending?: boolean;  // Added this
   last_updated_by?: string;
   users?: { 
     id: string;
@@ -39,12 +41,31 @@ interface Station {
     phone?: string; 
     no_contributions?: number; 
     no_likes?: number; 
-    no_dislikes?: number;
+    no_incorrect_reports?: number;
     b_show_gcash?: boolean;
     b_show_maya?: boolean;
   }; 
   [key: string]: any;
 }
+interface ReportData {
+  brand: string;
+  city: string;
+  // Availability toggles
+  has_regular_gas: boolean;
+  has_premium_gas: boolean;
+  has_sports_gas: boolean;
+  has_regular_diesel: boolean;
+  has_premium_diesel: boolean;
+  // Marketing names
+  regular_gas_name: string;
+  premium_gas_name: string;
+  sports_gas_name: string;
+  regular_diesel_name: string;
+  premium_diesel_name: string;
+}
+
+// 2. Initialize the state with the proper type
+
 
 // Helper for distance calculation
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -60,6 +81,22 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 
 export const MapScreen: FC = () => {
   const mapRef = useRef<any>(null)
+  // 1. Create a state to hold the map's layout height
+  const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 })
+  const [reportData, setReportData] = useState<ReportData>({
+    brand: "",
+    city: "",
+    has_regular_gas: false,
+    has_premium_gas: false,
+    has_sports_gas: false,
+    has_regular_diesel: false,
+    has_premium_diesel: false,
+    regular_gas_name: "",
+    premium_gas_name: "",
+    sports_gas_name: "",
+    regular_diesel_name: "",
+    premium_diesel_name: "",
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
@@ -85,6 +122,15 @@ export const MapScreen: FC = () => {
   
   const [isUserInfoVisible, setIsUserInfoVisible] = useState(false)
   const [isVoting, setIsVoting] = useState(false)
+  const [mappingsLoaded, setMappingsLoaded] = useState(false)
+
+  useEffect(() => {
+    const setup = async () => {
+      await initFuelMappings()
+      setMappingsLoaded(true) // Trigger a re-render once DB data is ready
+    }
+    setup()
+  }, [])
 
   // 1. Update the initialization useEffect to restore Auth
   useEffect(() => {
@@ -168,7 +214,7 @@ export const MapScreen: FC = () => {
       Alert.alert("Success", `You ${type}d this update.`)
       await fetchStations()
       if (selectedStation && selectedStation.users) {
-        const field = type === 'like' ? 'no_likes' : 'no_dislikes'
+        const field = type === 'like' ? 'no_likes' : 'no_incorrect_reports'
         setSelectedStation({
             ...selectedStation,
             users: {
@@ -178,6 +224,65 @@ export const MapScreen: FC = () => {
         })
       }
     }
+    setIsVoting(false)
+  }
+
+  const handleVerifyOrDeny = async (reportId: string, isConfirm: boolean) => {
+    if (!currentUserId || isVoting) return
+    setIsVoting(true)
+
+    const { data, error } = await supabase.rpc('verify_or_deny_report', {
+      report_id: reportId,
+      current_user_id: currentUserId,
+      is_confirm: isConfirm
+    })
+
+    if (error) {
+      Alert.alert("Error", error.message)
+      setIsVoting(false)
+      return
+    }
+
+    if (isConfirm) {
+      if (data === 'STATION_PROMOTED') {
+        Alert.alert("Success!", "Station verified and added to the map!")
+        fetchStations() 
+      } else {
+        Alert.alert("Confirmed", "Your verification has been recorded.")
+      }
+    } else {
+      // DENIAL / CORRECTION FLOW
+      if (data === 'REPORT_DELETED_BY_DENIALS') {
+        Alert.alert("Report Removed", "This station was deleted due to multiple denials.")
+      } else {
+        Alert.alert(
+          "Incorrect Details?",
+          "Would you like to provide the correct details for this location instead?",
+          [
+            { text: "No", style: "cancel" },
+            { 
+              text: "Yes, Correct it", 
+              onPress: async () => {
+                // Guard clause: If for some reason station is null, stop here
+                if (!selectedStation) return;
+
+                const eligible = await toggleAddMode()
+                // Now TypeScript knows selectedStation exists here
+                setTempMarker({ 
+                  ...region, 
+                  latitude: Number(selectedStation.latitude), 
+                  longitude: Number(selectedStation.longitude) 
+                })
+                setReportModalVisible(true)
+              }
+            }
+          ]
+        )
+      }
+    }
+    
+    setSelectedStation(null)
+    fetchPending()
     setIsVoting(false)
   }
 
@@ -328,6 +433,61 @@ export const MapScreen: FC = () => {
     latitudeDelta: 15,
     longitudeDelta: 15,
   })
+  // --- NEW REPORTING STATES ---
+  const [isAddMode, setIsAddMode] = useState(false)
+  const [pendingStations, setPendingStations] = useState<any[]>([])
+  const [reportModalVisible, setReportModalVisible] = useState(false)
+  const [tempMarker, setTempMarker] = useState(region) // Syncs with your line 249 'region'
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // --- FETCH PENDING REPORTS ---
+  const fetchPending = useCallback(async () => {
+    const { data } = await supabase.from('user_reported_locations').select('*')
+    if (data) setPendingStations(data)
+  }, [])
+
+  useEffect(() => {
+    fetchPending()
+  }, [fetchPending])
+
+  // --- ELIGIBILITY & SPAM CHECK ---
+  const toggleAddMode = async () => {
+    if (isAddMode) {
+      setIsAddMode(false)
+      return
+    }
+
+    if (!currentUserId) {
+      Alert.alert("Authentication", "Please log in to report stations.")
+      return
+    }
+
+    // 1. Check for Penalty (no_incorrect_reports >= 3)
+    const { data: userData } = await supabase
+      .from('users')
+      .select('no_incorrect_reports')
+      .eq('id', currentUserId)
+      .single()
+
+    if (userData && userData.no_incorrect_reports >= 3) {
+      Alert.alert("Access Restricted", "You cannot add markers because you reached 3 incorrect reports.")
+      return
+    }
+
+    // 2. Check for Active Report (Spam Prevention: Max 1)
+    const { count } = await supabase
+      .from('user_reported_locations')
+      .select('*', { count: 'exact', head: true })
+      .eq('reporter_id', currentUserId)
+
+    if (count && count > 0) {
+      Alert.alert("Action Required", "You have a pending report. Please wait for it to be confirmed before adding another.")
+      return
+    }
+
+    setTempMarker(region) // Start the pin at current map center
+    setIsAddMode(true)
+  }
 
   const MAP_STYLE = [
     {
@@ -353,35 +513,133 @@ export const MapScreen: FC = () => {
   }
   const isNotAtMarkerLevel = Math.abs(region.latitudeDelta - 0.04) > 0.01;
 
+  const handleFinalSubmit = async (data: ReportData, coords: any) => {
+    // 1. Check for Brand and City
+    if (!data.brand.trim() || !data.city.trim()) {
+      Alert.alert("Missing Information", "Please provide both the Brand and the Municipality/City.")
+      return
+    }
+    // 2. Check if at least one fuel toggle is active
+    const hasAtLeastOneFuel = 
+      data.has_regular_gas || 
+      data.has_premium_gas || 
+      data.has_sports_gas || 
+      data.has_regular_diesel || 
+      data.has_premium_diesel
+
+    if (!hasAtLeastOneFuel) {
+      Alert.alert(
+        "No Fuels Selected", 
+        "Please toggle at least one fuel type that is available at this station."
+      )
+      return
+    }
+
+    // 3. Optional: Check if the toggled fuel actually has a name typed in
+    // This ensures they didn't just hit 'Yes' but left the label blank
+    const activeTogglesWithoutNames = [
+      data.has_regular_gas && !data.regular_gas_name,
+      data.has_premium_gas && !data.premium_gas_name,
+      data.has_sports_gas && !data.sports_gas_name,
+      data.has_regular_diesel && !data.regular_diesel_name,
+      data.has_premium_diesel && !data.premium_diesel_name,
+    ].some(condition => condition === true)
+
+    if (activeTogglesWithoutNames) {
+      Alert.alert("Missing Names", "Please provide a marketing name for the fuel types you enabled.")
+      return
+    }
+
+    setIsSubmitting(true)
+    const { error } = await supabase.from('user_reported_locations').insert([{
+      reporter_id: currentUserId,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      brand: data.brand,
+      city: data.city,
+     // Only save names if the toggle was true
+      regular_gas_name: data.has_regular_gas ? data.regular_gas_name : null,
+      premium_gas_name: data.has_premium_gas ? data.premium_gas_name : null,
+      sports_gas_name: data.has_sports_gas ? data.sports_gas_name : null,
+      regular_diesel_name: data.has_regular_diesel ? data.regular_diesel_name : null,
+      premium_diesel_name: data.has_premium_diesel ? data.premium_diesel_name : null,
+    }])
+
+    if (error) {
+      Alert.alert("Error", error.message)
+    } else {
+      Alert.alert("Success", "Report submitted for verification.")
+      setReportModalVisible(false)
+      setIsAddMode(false)
+      await fetchPending()
+      // Reset form to empty strings
+      setReportData({
+        brand: "", city: "", 
+        has_regular_gas: false, 
+        has_premium_gas: false, 
+        has_sports_gas: false, 
+        has_regular_diesel: false, 
+        has_premium_diesel: false,
+        regular_gas_name: "", 
+        premium_gas_name: "", 
+        sports_gas_name: "",
+        regular_diesel_name: "", 
+        premium_diesel_name: ""
+      })
+    }
+    setIsSubmitting(false)
+  }
+
+  const renderFuelToggle = (label: string, boolKey: keyof ReportData, nameKey: keyof ReportData, placeholder: string) => (
+    <View style={{ marginTop: 12 }}>
+      <View style={$toggleRow}>
+        <Text text={label} style={{ flex: 1 }} />
+        <TouchableOpacity 
+          onPress={() => setReportData({ ...reportData, [boolKey]: !reportData[boolKey] })}
+          style={[$toggleBtn, reportData[boolKey] && $toggleBtnActive]}
+        >
+          <Text text={reportData[boolKey] ? "YES" : "NO"} size="xs" style={{ color: "white", fontWeight: "bold" }} />
+        </TouchableOpacity>
+      </View>
+      {reportData[boolKey] && (
+        <Animated.View entering={FadeInUp}>
+          <TextInput 
+            placeholder={`Marketing Name (${placeholder})`} 
+            style={$miniInput} 
+            placeholderTextColor="#999"
+            value={reportData[nameKey] as string}
+            onChangeText={(t) => setReportData({ ...reportData, [nameKey]: t })} 
+          />
+        </Animated.View>
+      )}
+    </View>
+  )
+  const isAnimating = useRef(false)
+
+  const toggle3DView = async () => {
+    if (!mapRef.current) return
+
+    isAnimating.current = true
+    const currentCamera = await mapRef.current.getCamera()
+
+    // If already tilted, flatten it. Otherwise, tilt it.
+    const is3D = currentCamera.pitch > 0
+
+    mapRef.current.animateCamera({
+      center: {
+        latitude: region.latitude,
+        longitude: region.longitude,
+      },
+      heading: currentCamera.heading,
+      pitch: is3D ? 0 : 55,      
+      zoom: is3D ? 15 : 17,       
+    }, { duration: 600 })
+    // Release the lock after animation completes
+    setTimeout(() => { isAnimating.current = false }, 650)
+  }
+
   return (
     <Screen contentContainerStyle={{ flex: 1 }}>
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={StyleSheet.absoluteFill}
-        showsUserLocation={true}
-        // initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
-        onMapReady={() => setIsMapReady(true)}
-        mapPadding={{top: 200, left: 0, right:0, bottom: 0}}
-        toolbarEnabled={false}
-        initialRegion={region}
-        customMapStyle={MAP_STYLE}
-        onRegionChangeComplete={(newRegion) => {
-          setRegion(newRegion)
-        }}
-      >
-        {region.latitudeDelta < 0.05 && filteredStations.map((station) => (
-          <Marker
-            key={`marker-${station.id}-${station.updated_at}`}
-            coordinate={{ latitude: Number(station.latitude), longitude: Number(station.longitude) }}
-            onPress={() => handleMarkerPress(station)}
-            onSelect={() => handleMarkerPress(station)}
-            tracksViewChanges={false}
-            image={FUEL_MARKER}
-          />
-        ))}
-      </MapView>
-
       <Header
         safeAreaEdges={["top"]} 
         RightActionComponent={
@@ -394,6 +652,74 @@ export const MapScreen: FC = () => {
         style={themed($headerStyle)}
         titleStyle={themed($headerTitle)}
       />
+      <View 
+        style={{ flex: 1 }} 
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout
+          setMapLayout({ width, height })
+        }}
+      >
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={StyleSheet.absoluteFill}
+          showsUserLocation={true}
+          // initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
+          onMapReady={() => setIsMapReady(true)}
+          mapPadding={{top: 110, left: 0, right:0, bottom: 0}}
+          toolbarEnabled={false}
+          initialRegion={region}
+          customMapStyle={MAP_STYLE}
+          onRegionChangeComplete={(newRegion) => {
+            setRegion(newRegion)
+            if (isAddMode) {
+              setTempMarker(newRegion) // Reporting state
+            }
+          }}
+        >
+          {region.latitudeDelta < 0.05 && filteredStations.map((station) => (
+            <Marker
+              key={`marker-${station.id}-${station.updated_at}`}
+              coordinate={{ latitude: Number(station.latitude), longitude: Number(station.longitude) }}
+              onPress={() => handleMarkerPress(station)}
+              onSelect={() => handleMarkerPress(station)}
+              tracksViewChanges={false}
+              image={FUEL_MARKER}
+            />
+          ))}
+          {/* Loop 2: PENDING STATIONS (New verification logic) */}
+          {region.latitudeDelta < 0.05 && pendingStations.map((ps) => (
+            <Marker 
+              key={`pending-${ps.id}`} 
+              coordinate={{ latitude: Number(ps.latitude), longitude: Number(ps.longitude) }}
+              pinColor="orange"
+              onPress={() => setSelectedStation({ ...ps, isPending: true })} 
+            />
+          ))}
+        </MapView>
+
+        {/* 3. Place Crosshair inside the same View */}
+        {isAddMode && (
+          <View 
+            style={[
+              $crosshairContainer, 
+              { 
+                width: mapLayout.width,
+                height: mapLayout.height,
+                // OFFSET: Move the crosshair up by half of the bottom mapPadding
+                // to stay aligned with Google's logical center
+                marginTop: 55, 
+              }
+            ]} 
+            pointerEvents="none"
+          >
+            <Icon icon="close" color={colors.palette.primary500} size={40} />
+            <View style={$crosshairDot} />
+          </View>
+        )}
+      </View>
+
+      
       {isNotAtMarkerLevel && (
         <View style={$markerLevelButtonWrapper}>
           <TouchableOpacity 
@@ -404,6 +730,82 @@ export const MapScreen: FC = () => {
             <Text style={$pillText}>Reset View</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      <Modal visible={reportModalVisible} animationType="slide" transparent>
+        <View style={$brandModalOverlay}>
+          <View style={[$brandModalContent, { width: '90%' }]}>
+            <Text preset="subheading" text="Report New Station" />
+            <ScrollView style={{ maxHeight: 450, marginTop: 10 }} showsVerticalScrollIndicator={false}>
+              <TextInput 
+                placeholder="Brand (e.g. Shell)" 
+                style={$filterInput} 
+                value={reportData.brand}
+                onChangeText={(t) => setReportData({ ...reportData, brand: t })} 
+              />
+              <TextInput 
+                placeholder="Municipality/City" 
+                style={$filterInput} 
+                value={reportData.city}
+                onChangeText={(t) => setReportData({ ...reportData, city: t })} 
+              />
+              
+              <Text text="Available Fuel Types" weight="bold" style={{ marginTop: 20, marginBottom: 5 }} />
+              
+              {/* All 5 Toggles */}
+              {renderFuelToggle("Regular Gasoline", "has_regular_gas", "regular_gas_name", "e.g. FuelSave")}
+              {renderFuelToggle("Premium Gasoline", "has_premium_gas", "premium_gas_name", "e.g. V-Power")}
+              {renderFuelToggle("Sports Gasoline", "has_sports_gas", "sports_gas_name", "e.g. V-Power Racing")}
+              {renderFuelToggle("Regular Diesel", "has_regular_diesel", "regular_diesel_name", "e.g. FuelSave Diesel")}
+              {renderFuelToggle("Premium Diesel", "has_premium_diesel", "premium_diesel_name", "e.g. V-Power Diesel")}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity style={$modalBtn} onPress={() => setReportModalVisible(false)}>
+                <Text text="Cancel" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} 
+                onPress={() => handleFinalSubmit(reportData, tempMarker)}
+              >
+                <Text text="Submit" style={{ color: 'white' }} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 3D View Toggle Button */}
+      {region.latitudeDelta < 0.05 && (
+        <TouchableOpacity 
+          style={[$utilityBtn, { bottom: 190 }]} 
+          onPress={toggle3DView}
+        >
+        <Text style={$pillText}>3D</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Floating Action Button to toggle Add Mode */}
+      {region.latitudeDelta < 0.05 && (
+        <TouchableOpacity 
+          style={[$fab, { backgroundColor: isAddMode ? colors.palette.angry500 : colors.palette.primary500 }]} 
+          onPress={toggleAddMode}
+        >
+          <Icon icon={isAddMode ? "close" : "search"} color="white" size={30} />
+        </TouchableOpacity>
+      )}
+
+      {/* The Placement Bar that appears when in Add Mode */}
+      {isAddMode && (
+        <Animated.View entering={FadeInUp} style={$placementBar}>
+          <Text text="Center the station on the crosshair" style={{ color: 'white', marginBottom: 8 }} />
+          <TouchableOpacity 
+            style={$confirmBtn} 
+            onPress={() => setReportModalVisible(true)}
+          >
+            <Text text="Set Location" style={{ color: 'white', fontWeight: 'bold' }} />
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       <View style={$searchContainer}>
@@ -551,7 +953,7 @@ export const MapScreen: FC = () => {
               <View style={[$feedbackRowExpanded, { marginTop: 10 }]}>
                 <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
                   <Icon icon="check" size={22} color="#FF3B30" />
-                  <Text size="xs" weight="bold" style={{ color: '#FF3B30', marginTop: 4 }}>{selectedStation?.users?.no_dislikes || 0} Dislikes</Text>
+                  <Text size="xs" weight="bold" style={{ color: '#FF3B30', marginTop: 4 }}>{selectedStation?.users?.no_incorrect_reports || 0} Incorrect reports</Text>
                 </TouchableOpacity>
                 <View style={$verticalDividerFeedback} />
                 <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('like')} disabled={isVoting}>
@@ -572,67 +974,253 @@ export const MapScreen: FC = () => {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={$modalOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => !isReporting && setSelectedStation(null)} />
-            <Animated.View entering={FadeIn} style={$detailCard}>
-              <TouchableOpacity onPress={() => setSelectedStation(null)} style={$dismissHandle}><Icon icon="caretDown" size={24} color="white" /></TouchableOpacity>
-              <View style={$innerContent}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <View style={{ flex: 1 }}>
-                    <Text weight="bold" size="md">{selectedStation?.brand}</Text>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
-                      <Text size="xxs" style={{ opacity: 0.6 }}>{selectedStation?.city} • {selectedStation ? formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : ""}</Text>
-                      {selectedStation?.users?.id ? (
-                        <TouchableOpacity onPress={() => setIsUserInfoVisible(true)}>
-                          <Text size="xxs" style={{ color: getRankColor(selectedStation.users.no_contributions), fontWeight: 'bold' }}>{" "}by {selectedStation.b_show_firstname ? selectedStation.users.firstname : `${selectedStation.users.firstname} ${selectedStation.users.lastname || ""}`}</Text>
-                        </TouchableOpacity>
+            
+            {/* GUARD: Only render inner logic if selectedStation exists. 
+                This prevents the "Cannot read property of null" crash on screen load.
+            */}
+            {selectedStation && (
+              <Animated.View entering={FadeIn} style={$detailCard}>
+                <TouchableOpacity onPress={() => setSelectedStation(null)} style={$dismissHandle}>
+                  <Icon icon="caretDown" size={24} color="white" />
+                </TouchableOpacity>
+                
+                <View style={$innerContent}>
+                  {/* 1. HEADER - RESTORED LEGACY LOGIC */}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flex: 1 }}>
+                      <Text weight="bold" size="md">{selectedStation.brand}</Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
+                        <Text size="xxs" style={{ opacity: 0.6 }}>
+                          {selectedStation.city} • {selectedStation.updated_at ? formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : "Recent"}
+                        </Text>
+                        
+                        {/* LEGACY CONTRIBUTOR LOGIC - EXACTLY AS PER RAW FILE */}
+                        {selectedStation.users ? (
+                          <TouchableOpacity onPress={() => setIsUserInfoVisible(true)}>
+                            <Text size="xxs" style={{ color: getRankColor(selectedStation.users.no_contributions), fontWeight: 'bold' }}>
+                              {" "}by {selectedStation.b_show_firstname ? selectedStation.users.firstname : `${selectedStation.users.firstname} ${selectedStation.users.lastname || ""}`}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text size="xxs" style={{ color: "#8E8E93", fontWeight: 'bold' }}>
+                            {" "}by {selectedStation.isPending ? "User Report" : "System"}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* LEGACY FAVORITE BUTTON */}
+                    {!selectedStation.isPending && (
+                      <TouchableOpacity onPress={toggleFavorite} style={$favoriteBtn}>
+                        <Icon icon="heart" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* 2. BODY BRANCHING */}
+                  {selectedStation.isPending ? (
+                    /* --- PENDING MARKER UI (FROM TXT FILE) --- */
+                    <View style={{ marginTop: 15 }}>
+                      <View style={{ backgroundColor: '#FFF9E6', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FFE58F' }}>
+                        <Text text="User Reported Location" size="xs" weight="bold" style={{ color: '#856404' }} />
+                        <Text text="Is this station real? Help verify it for the community." size="xxs" style={{ color: '#856404' }} />
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          {['regular_gas_name', 'premium_gas_name', 'sports_gas_name', 'regular_diesel_name', 'premium_diesel_name'].map((key) => (
+                            selectedStation[key] ? (
+                              <View key={key} style={$fuelTag}>
+                                <Text text={selectedStation[key]} size="xxs" weight="bold" style={{ color: colors.palette.primary500 }} />
+                              </View>
+                            ) : null
+                          ))}
+                        </View>
+                      </View>
+                      
+                      {/* SAFE REPORTER CHECK */}
+                      {currentUserId === selectedStation.reporter_id ? (
+                        <View style={{ marginTop: 20, alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12 }}>
+                          <Text text="Waiting for others to verify your report..." size="xxs" style={{ opacity: 0.5 }} />
+                        </View>
                       ) : (
-                        <Text size="xxs" style={{ color: "#8E8E93", fontWeight: 'bold' }}>{" "}by System</Text>
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                          <TouchableOpacity style={[$modalBtn, { flex: 1, backgroundColor: colors.palette.primary500 }]} onPress={() => handleVerifyOrDeny(selectedStation.id, true)}>
+                            <Text text="Confirm" style={{ color: 'white', fontWeight: 'bold' }} />
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[$modalBtn, { flex: 1, backgroundColor: colors.palette.angry500 }]} onPress={() => handleVerifyOrDeny(selectedStation.id, false)}>
+                            <Text text="Incorrect" style={{ color: 'white', fontWeight: 'bold' }} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    /* --- LEGACY PRICE DASHBOARD (FROM RAW FILE) --- */
+                    <View style={$priceDashboard}>
+                      <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
+                        <View style={$priceGridContainer}>
+                          {(() => {
+                            const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
+                            return Object.keys(config).map((key, index) => (
+                              <View key={key} style={$dataEntry}>
+                                <Text style={$dataLabel}>{config[key]}</Text>
+                                {isReporting ? (
+                                  <TextInput style={$priceInput} keyboardType="decimal-pad" value={reportPrices[key] || ""} onChangeText={(val) => setReportPrices(prev => ({ ...prev, [key]: val }))} placeholder="0.00" />
+                                ) : ( 
+                                  <Text style={$dataValue}>₱{(Number(selectedStation[key]) || 0).toFixed(2)}</Text> 
+                                )}
+                                {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
+                              </View>
+                            ))
+                          })()}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                {/* 3. FOOTER - LEGACY DIRECTIONS & UPDATE BUTTONS */}
+                {!selectedStation.isPending && (
+                  <View style={$buttonAbsoluteWrapper}>
+                    <View style={$buttonRow}>
+                      {isReporting ? (
+                        <>
+                          <TouchableOpacity style={[$directionsButton, { backgroundColor: '#605e5e' }]} onPress={() => setIsReporting(false)}><Text style={$buttonText}>Cancel</Text></TouchableOpacity>
+                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={handleUpdatePrice}><Text style={$buttonText}>Submit</Text></TouchableOpacity>
+                        </>
+                      ) : (
+                        <>
+                          <TouchableOpacity style={$directionsButton} onPress={() => Linking.openURL(`google.navigation:q=${selectedStation.latitude},${selectedStation.longitude}`)}><Icon icon="directions" color="white" size={24} /><Text style={$buttonText}>Directions</Text></TouchableOpacity>
+                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsReporting(true)}><Icon icon="priceUpdate" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
+                        </>
                       )}
                     </View>
                   </View>
-                  <TouchableOpacity onPress={toggleFavorite} style={$favoriteBtn}><Icon icon="heart" color={favorites.includes(selectedStation?.id || "") ? colors.palette.primary500 : "#D1D1D6"} size={32} /></TouchableOpacity>
-                </View>
-                <View style={$priceDashboard}>
-                  {!selectedStation ? <ActivityIndicator color={colors.palette.primary500} style={{ flex: 1 }} /> : (
-                    <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
-                      <View style={$priceGridContainer}>
-                        {(() => {
-                          const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
-                          return Object.keys(config).map((key, index) => (
-                            <View key={key} style={$dataEntry}>
-                              <Text style={$dataLabel}>{config[key]}</Text>
-                              {isReporting ? (
-                                <TextInput style={$priceInput} keyboardType="decimal-pad" value={reportPrices[key] || ""} onChangeText={(val) => setReportPrices(prev => ({ ...prev, [key]: val }))} placeholder="0.00" />
-                              ) : ( <Text style={$dataValue}>₱{(Number(selectedStation[key]) || 0).toFixed(2)}</Text> )}
-                              {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
-                            </View>
-                          ))
-                        })()}
-                      </View>
-                    </ScrollView>
-                  )}
-                </View>
-              </View>
-              <View style={$buttonAbsoluteWrapper}>
-                <View style={$buttonRow}>
-                  {isReporting ? (
-                    <>
-                      <TouchableOpacity style={[$directionsButton, { backgroundColor: '#605e5e' }]} onPress={() => setIsReporting(false)}><Text style={$buttonText}>Cancel</Text></TouchableOpacity>
-                      <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={handleUpdatePrice}><Text style={$buttonText}>Submit</Text></TouchableOpacity>
-                    </>
-                  ) : (
-                    <>
-                      <TouchableOpacity style={$directionsButton} onPress={() => Linking.openURL(`google.navigation:q=${selectedStation?.latitude},${selectedStation?.longitude}`)}><Icon icon="directions" color="white" size={24} /><Text style={$buttonText}>Directions</Text></TouchableOpacity>
-                      <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsReporting(true)}><Icon icon="priceUpdate" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              </View>
-            </Animated.View>
+                )}
+              </Animated.View>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
     </Screen>
   )
+}
+const $fuelTag: ViewStyle = {
+  backgroundColor: "white",
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 6,
+  borderWidth: 1,
+  borderColor: colors.palette.primary500,
+}
+
+const $modalBtns: ViewStyle = {
+  padding: 12,
+  borderRadius: 8,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#EEE',
+}
+const $utilityBtn: ViewStyle = {
+  position: 'absolute',
+  right: 20,
+  width: 50,
+  height: 50,
+  borderRadius: 25,
+  backgroundColor: "#1737ba", // Matching your header color
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 5,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  zIndex: 99,
+}
+const $toggleRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  paddingVertical: 10,
+  borderBottomWidth: HAIRLINE,
+  borderBottomColor: "#EEE",
+}
+
+const $toggleBtn: ViewStyle = {
+  backgroundColor: "#8E8E93",
+  paddingHorizontal: 15,
+  paddingVertical: 5,
+  borderRadius: 15,
+}
+
+const $toggleBtnActive: ViewStyle = {
+  backgroundColor: colors.palette.primary500,
+}
+const $crosshairContainer: ViewStyle = {
+  position: 'absolute',
+  top: 0, // Ensure it starts at the top of the Map View
+  left: 0,
+  justifyContent: "center", // This centers the icon vertically
+  alignItems: "center",     // This centers the icon horizontally
+  opacity: 0.8,
+  zIndex: 10,
+}
+const $crosshairDot: ViewStyle = {
+  width: 4,
+  height: 4,
+  borderRadius: 2,
+  backgroundColor: colors.palette.primary500,
+  position: "absolute",
+}
+const $fab: ViewStyle = {
+  position: 'absolute',
+  bottom: 120, // Positioned above the attribution/google logo
+  right: 20,
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 5,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  zIndex: 99,
+}
+
+const $placementBar: ViewStyle = {
+  position: 'absolute',
+  top: 160, // Positioned below your search bar
+  left: 20,
+  right: 20,
+  backgroundColor: 'rgba(0,0,0,0.85)',
+  padding: 16,
+  borderRadius: 15,
+  alignItems: 'center',
+  zIndex: 100,
+}
+
+const $confirmBtn: ViewStyle = {
+  backgroundColor: colors.palette.primary500,
+  paddingHorizontal: 24,
+  paddingVertical: 12,
+  borderRadius: 25,
+}
+const $miniInput: TextStyle = {
+  backgroundColor: "#F2F2F7",
+  borderRadius: 8,
+  padding: 10,
+  marginTop: 5,
+  fontSize: 14,
+  color: "black",
+  borderWidth: HAIRLINE,
+  borderColor: "#D1D1D6",
+}
+
+const $pendingNotice: ViewStyle = {
+  backgroundColor: "#FFF9E6",
+  padding: 10,
+  borderRadius: 8,
+  marginTop: 10,
+  borderWidth: 1,
+  borderColor: "#FFE58F",
 }
 const $attributionContainer: ViewStyle = {
   position: "absolute",
