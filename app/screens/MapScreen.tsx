@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated"
 import { 
   TextStyle, View, ViewStyle, TouchableOpacity, 
   Linking, ScrollView, StyleSheet, Pressable, TextInput, Alert, 
-  KeyboardAvoidingView, Platform, Modal, ActivityIndicator, PixelRatio
+  KeyboardAvoidingView, Platform, Modal, ActivityIndicator, PixelRatio, Image
 } from "react-native"
 import * as Clipboard from "expo-clipboard"
 import { formatDistanceToNow } from "date-fns"
@@ -13,7 +13,7 @@ import * as Location from "expo-location"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import MapView, { PROVIDER_GOOGLE, Marker } from "react-native-maps"
-import { Icon } from "@/components/Icon"
+import { Icon, PressableIcon } from "@/components/Icon"
 import { colors } from "@/theme/colorsDark"
 
 import { supabase } from "@/services/supabase" 
@@ -210,6 +210,16 @@ export const MapScreen: FC = () => {
     }, 100)
   }, [selectedStation])
 
+  const hasFilterApplied = useMemo(() => {
+    // Check if active values differ from their original defaults
+    const isFuelChanged = activeFuelType !== "gas"
+    const isPriceChanged = activeMaxPrice !== ""
+    const isDistanceChanged = activeDistance !== null
+    const isBrandsChanged = activeBrands.length > 0
+
+    return isFuelChanged || isPriceChanged || isDistanceChanged || isBrandsChanged
+  }, [activeFuelType, activeMaxPrice, activeDistance, activeBrands])
+
   const handleApplyAll = () => { 
     setActiveFuelType(tempFuelType)
     setActiveMaxPrice(tempMaxPrice)
@@ -227,8 +237,20 @@ export const MapScreen: FC = () => {
   }
 
   const handleClearAll = () => { 
-    setTempFuelType("gas"); setTempMaxPrice(""); setTempBrands([]); setTempDistance(null);
-    setActiveFuelType("gas"); setActiveMaxPrice(""); setActiveBrands([]); setActiveDistance(null);
+    // Reset the temporary UI state
+    setTempFuelType("gas")
+    setTempMaxPrice("")
+    setTempBrands([])
+    setTempDistance(null)
+    
+    // Reset the actual active filters used by the map
+    setActiveFuelType("gas")
+    setActiveMaxPrice("")
+    setActiveBrands([])
+    setActiveDistance(null)
+    
+    // Optional: Close the filter if you want
+    // setIsFilterVisible(false) 
   }
 
   const toggleFavorite = async () => {
@@ -323,6 +345,17 @@ export const MapScreen: FC = () => {
     }
   ]
 
+  const zoomToMarkerVisibleLevel = () => {
+    if (!mapRef.current) return
+    
+    mapRef.current.animateToRegion({
+      ...region,
+      latitudeDelta: 0.03,
+      longitudeDelta: 0.03,
+    }, 600)
+  }
+  const isNotAtMarkerLevel = Math.abs(region.latitudeDelta - 0.04) > 0.01;
+
   return (
     <Screen contentContainerStyle={{ flex: 1 }}>
       <MapView
@@ -364,14 +397,30 @@ export const MapScreen: FC = () => {
         style={themed($headerStyle)}
         titleStyle={themed($headerTitle)}
       />
+      {isNotAtMarkerLevel && (
+        <View 
+          style={$markerLevelButtonWrapper}
+        >
+          <TouchableOpacity 
+            style={$markerLevelPill} 
+            onPress={zoomToMarkerVisibleLevel}
+            activeOpacity={0.9}
+          >
+            <Text style={$pillText}>Reset View</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={$searchContainer}>
         <View style={$searchBar}>
           <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
-            <Icon icon="search" color={colors.palette.primary500} size={20} />
+            <Icon icon="search" color={colors.palette.primary500} size={24} />
             <Text style={$searchPlaceholder} numberOfLines={1}>
               {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance ? `${activeDistance}km` : "Any distance"}
             </Text>
+            {hasFilterApplied && (
+              <PressableIcon icon="close" size={24} onPress={handleClearAll}/>
+            )}
           </Pressable>
         </View>
 
@@ -441,52 +490,59 @@ export const MapScreen: FC = () => {
       </Modal>
 
       <Modal visible={isUserInfoVisible} transparent animationType="fade" onRequestClose={() => setIsUserInfoVisible(false)}>
-        <View style={$brandModalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsUserInfoVisible(false)} />
+        <TouchableOpacity style={$brandModalOverlay} activeOpacity={1} onPress={() => setIsUserInfoVisible(false)}>
           <View style={$userInfoCard}>
-            <View style={$headerRow}>
-              <View style={$avatarPlaceholder}><Icon icon="profile" size={30} color="white" /></View>
-              <View style={$statsContainer}>
-                <View style={$statItem}>
-                  <Text weight="bold" size="md" style={{ color: getRankColor(selectedStation?.users?.no_contributions) }}>{selectedStation?.users?.no_contributions || 0}</Text>
-                  <Text size="xxs" style={$statLabel}>Contributions</Text>
-                </View>
-                <View style={$statItem}>
-                  <Text weight="bold" size="md">{selectedStation?.users?.no_likes || 0}</Text>
-                  <Text size="xxs" style={$statLabel}>Total Likes</Text>
-                </View>
+            <View style={$profileHeader}>
+              <View style={$avatarCircle}>
+                <Text 
+                  style={$avatarText} 
+                  text={(selectedStation?.users?.firstname?.substring(0,1)?.toUpperCase() || "") + (selectedStation?.users?.lastname?.substring(0,1)?.toUpperCase() || "")} 
+                  size="xl" 
+                  weight="bold" 
+                />
               </View>
-              <TouchableOpacity onPress={() => setIsUserInfoVisible(false)} style={$closeModalBtnSide}><Icon icon="close" size={20} color="#8E8E93" /></TouchableOpacity>
-            </View>
-            <View style={$nameSection}>
-              <Text weight="bold" size="lg">{selectedStation?.users?.firstname || "System"} {selectedStation?.users?.lastname || "User"}</Text>
-            </View>
-            {(selectedStation?.users?.b_show_gcash || selectedStation?.users?.b_show_maya) && selectedStation?.users?.phone && (
-              <TouchableOpacity style={$copyInfoContainerFull} onPress={() => handleCopyNumber(selectedStation?.users?.phone || "")}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <View>
-                    <Text size="xxs" style={$copyInfoLabel}>
-                      {selectedStation?.users?.b_show_gcash && selectedStation?.users?.b_show_maya ? "GCash | Maya" : selectedStation?.users?.b_show_gcash ? "GCash" : "Maya"}
-                    </Text>
-                    <Text size="md" weight="medium" style={{ color: '#555', marginTop: 2 }}>{selectedStation?.users?.phone}</Text>
-                  </View>
-                  <Icon icon="check" size={18} color="#8E8E93" />
+              <View style={$nameContainer}>
+                <View style={$tierRow}>
+                  <Text preset="subheading" weight="bold" style={{ color: "black" }}>
+                    {selectedStation?.users?.firstname} {selectedStation?.users?.lastname}
+                  </Text>
+                  <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                 </View>
-              </TouchableOpacity>
-            )}
-            <View style={$feedbackRowExpanded}>
-              <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
-                <Icon icon="check" size={22} color="#FF3B30" />
-                <Text size="xs" weight="bold" style={{ color: '#FF3B30', marginTop: 4 }}>{selectedStation?.users?.no_dislikes || 0} Dislikes</Text>
-              </TouchableOpacity>
-              <View style={$verticalDividerFeedback} />
-              <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('like')} disabled={isVoting}>
-                <Icon icon="heart" size={22} color="#4CD964" />
-                <Text size="xs" weight="bold" style={{ color: '#4CD964', marginTop: 4 }}>{selectedStation?.users?.no_likes || 0} Likes</Text>
-              </TouchableOpacity>
+                <Text style={{ color: "#666", fontSize: 14 }}>Rank: Gold Contributor</Text>
+              </View>
             </View>
+
+            <View style={$statsRow}>
+              <View style={$statBox}>
+                <Text weight="bold" style={$statValue}>{selectedStation?.users?.no_contributions || 0}</Text>
+                <Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text>
+              </View>
+              <View style={$statBox}>
+                <Text weight="bold" style={$statValue}>{selectedStation?.users?.no_likes || 0}</Text>
+                <Text size="xxs" style={$statLabel}>LIKES</Text>
+              </View>
+            </View>
+
+            {/* Logic: Only show voting if NOT the current user */}
+            {selectedStation?.users?.id && selectedStation?.users?.id !== currentUserId && (
+              <View style={[$feedbackRowExpanded, { marginTop: 10 }]}>
+                <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
+                  <Icon icon="check" size={22} color="#FF3B30" />
+                  <Text size="xs" weight="bold" style={{ color: '#FF3B30', marginTop: 4 }}>{selectedStation?.users?.no_dislikes || 0} Dislikes</Text>
+                </TouchableOpacity>
+                <View style={$verticalDividerFeedback} />
+                <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('like')} disabled={isVoting}>
+                  <Icon icon="heart" size={22} color="#4CD964" />
+                  <Text size="xs" weight="bold" style={{ color: '#4CD964', marginTop: 4 }}>{selectedStation?.users?.no_likes || 0} Likes</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity style={[$closeBtn, { marginTop: 15 }]} onPress={() => setIsUserInfoVisible(false)}>
+              <Text style={{ color: "white", fontWeight: "600" }}>Close</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       <Modal visible={!!selectedStation} animationType="slide" transparent onRequestClose={() => !isReporting && setSelectedStation(null)}>
@@ -555,6 +611,43 @@ export const MapScreen: FC = () => {
     </Screen>
   )
 }
+const $markerLevelButtonWrapper: ViewStyle = {
+  position: "absolute",
+  bottom: 30, // Sit above the station card
+  alignSelf: "center", // Center it to make it look like a "Search this area" button
+  zIndex: 99,
+}
+
+const $markerLevelPill: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#1737ba",
+  paddingVertical: 10,
+  paddingHorizontal: 16,
+  borderRadius: 25,
+  elevation: 6,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+}
+
+const $pillText: TextStyle = {
+  color: "white",
+  fontSize: 12,
+  fontWeight: "bold",
+  marginLeft: 8,
+}
+const $profileHeader: ViewStyle = { flexDirection: "row", alignItems: "center", marginBottom: 20 }
+const $avatarCircle: ViewStyle = { width: 70, height: 70, borderRadius: 35, backgroundColor: "#E5E5EA", alignItems: "center", justifyContent: "center", marginRight: 16 }
+const $avatarText: TextStyle = { color: "#1737ba" }
+const $nameContainer: ViewStyle = { flex: 1 }
+const $tierRow: ViewStyle = { flexDirection: "row", alignItems: "center" }
+const $statsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 16, padding: 16, marginBottom: 12 }
+const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
+const $statValue: TextStyle = { color: "#1C1C1E", fontSize: 18 }
+const $statLabel: TextStyle = { color: "#8E8E93", marginTop: 4 }
+const $closeBtn: ViewStyle = { backgroundColor: "#1737ba", paddingVertical: 14, borderRadius: 16, alignItems: "center" }
 const $headerStyle: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: "#1737ba",
 })
@@ -568,7 +661,7 @@ const $leftActionWrapper: ViewStyle = {
   alignItems: "center",
   marginLeft: 16,
 }
-const $searchContainer: ViewStyle = { position: "absolute", top: 110, left: 20, right: 20, zIndex: 10 }
+const $searchContainer: ViewStyle = { position: "absolute", top: 100, left: 10, right: 10, zIndex: 10 }
 const $searchBar: ViewStyle = { backgroundColor: "white", height: 50, borderRadius: 25, flexDirection: "row", alignItems: "center", paddingHorizontal: 15, elevation: 5 }
 const $searchPlaceholder: TextStyle = { flex: 1, marginLeft: 10, color: "#8E8E93", fontSize: 13 }
 const $filterDropdown: ViewStyle = { backgroundColor: "white", marginTop: 10, borderRadius: 20, padding: 20, elevation: 5 }
@@ -588,15 +681,6 @@ const $checkboxActive: ViewStyle = { backgroundColor: colors.palette.primary500,
 const $modalBtn: ViewStyle = { flex: 1, paddingVertical: 12, borderRadius: 25, alignItems: 'center' }
 
 const $userInfoCard: ViewStyle = { backgroundColor: 'white', width: '90%', borderRadius: 24, padding: 24, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }
-const $headerRow: ViewStyle = { flexDirection: 'row', alignItems: 'center', marginBottom: 10 }
-const $avatarPlaceholder: ViewStyle = { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.palette.primary500, justifyContent: 'center', alignItems: 'center' }
-const $statsContainer: ViewStyle = { flex: 1, flexDirection: 'row', justifyContent: 'space-around', marginLeft: 15 }
-const $statItem: ViewStyle = { alignItems: 'center' }
-const $statLabel: TextStyle = { opacity: 0.5, marginTop: 2, fontSize: 10 }
-const $closeModalBtnSide: ViewStyle = { padding: 4 }
-const $nameSection: ViewStyle = { marginBottom: 20 }
-const $copyInfoContainerFull: ViewStyle = { width: '100%', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 16, backgroundColor: '#F2F2F7', borderWidth: HAIRLINE, borderColor: '#D1D1D6', marginBottom: 20 }
-const $copyInfoLabel: TextStyle = { fontSize: 8, color: '#8E8E93', textTransform: 'uppercase', marginBottom: 2, fontWeight: 'bold' }
 const $feedbackRowExpanded: ViewStyle = { flexDirection: 'row', width: '100%', borderTopWidth: HAIRLINE, borderTopColor: '#EEE', paddingTop: 10, alignItems: 'center' }
 const $feedbackBtn: ViewStyle = { flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }
 const $verticalDividerFeedback: ViewStyle = { width: 1, height: 40, backgroundColor: '#EEE' }
