@@ -15,9 +15,9 @@ export type DemoTabParamList = {
   Favorites: undefined
   Calculator: undefined
   Home: undefined
-  Register: undefined
-  Privacy: undefined
+  PrivacyPolicy: undefined
   TermsAndConditions: undefined
+  AccountSettings: undefined
 }
 
 // App Stack Navigator types
@@ -26,9 +26,9 @@ export type AppStackParamList = {
   Demo: NavigatorScreenParams<DemoTabParamList>
   Calculator: undefined
   Home: undefined
-  Register: undefined
-  Privacy: undefined
+  PrivacyPolicy: undefined
   TermsAndConditions: undefined
+  AccountSettings: undefined
   // 🔥 Your screens go here
   // IGNITE_GENERATOR_ANCHOR_APP_STACK_PARAM_LIST
 }

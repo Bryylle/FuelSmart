@@ -10,7 +10,6 @@ import {
   Alert,
   Modal,
   Image,
-  RefreshControl,
 } from "react-native"
 import Animated, {
   useAnimatedStyle,
@@ -32,6 +31,12 @@ import { delay } from "@/utils/delay"
 
 import { supabase } from "@/services/supabase"
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
+
+const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
+  if (!fullName) return "Anonymous"
+  if (bShowName) return fullName
+  return `${fullName.charAt(0)}*****`
+}
 
 export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => {
   const { themed, theme: { colors } } = useAppTheme()
@@ -112,7 +117,6 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
           themed([$styles.container, $listContentContainer]),
           (favoriteStations.length === 0 || isError) && { flexGrow: 1, justifyContent: 'center' }
         ]}
-        // If there's an error, pass an empty array to force ListEmptyComponent to show
         data={isError ? [] : favoriteStations}
         refreshing={refreshing}
         onRefresh={manualRefresh}
@@ -126,7 +130,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
               style={{ marginTop: 0 }}
               heading={isError ? "Connection Error" : "No Favorites Yet"}
               content={isError 
-                ? "Cannot load your favorites. Please check your internet connection and pull down to refresh." 
+                ? "Cannot load your favorites. Please check your internet connection." 
                 : "Add gas stations to your favorites to see them here."
               }
               button="Refresh"
@@ -148,18 +152,22 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
         )}
       />
 
-      {/* User Modal */}
       <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
         <TouchableOpacity style={$modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
           <View style={$modalContent}>
              <View style={$profileHeader}>
                 <View style={$avatarCircle}>
-                  <Text style={$avatarText} text={selectedUser?.firstname?.substring(0,1)?.toUpperCase() + (selectedUser?.lastname?.substring(0,1)?.toUpperCase() || "")} size="xl" weight="bold" />
+                   <Text 
+                      style={$avatarText} 
+                      text={selectedUser?.full_name?.substring(0,1)?.toUpperCase() || "?"} 
+                      size="xl" 
+                      weight="bold" 
+                    />
                 </View>
                 <View style={$nameContainer}>
                   <View style={$tierRow}>
-                    <Text preset="subheading" weight="bold" style={{ color: "black" }}>
-                      {selectedUser?.firstname} {selectedUser?.lastname}
+                    <Text preset="subheading" weight="bold" style={{ color: "black", flexShrink: 1 }} numberOfLines={1}>
+                      {getDisplayName(selectedUser?.full_name, selectedUser?.b_show_name ?? true)}
                     </Text>
                     <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                   </View>
@@ -185,17 +193,22 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
   const [expanded, setExpanded] = useState(false)
   const height = useSharedValue(0)
 
+  // We ensure fuelConfig is at least an empty object to prevent the "undefined" crash
+  const fuelConfig = FUEL_BRAND_MAP[station.brand] || {}
+
   const handlePressCard = () => {
-    const config = FUEL_BRAND_MAP[station.brand] || FUEL_BRAND_MAP["Default"]
-    const fuelCount = Object.keys(config).length
-    const targetHeight = fuelCount > 3 ? 280 : 220 
+    const fuelKeys = Object.keys(fuelConfig)
+    
+    // Determine height: If brand not found (length 0), we give it a default height 
+    // so it still expands to show "No data" or at least doesn't stay frozen.
+    const targetHeight = fuelKeys.length > 3 ? 280 : 220 
+    
     height.value = withTiming(expanded ? 0 : targetHeight, { duration: 250 })
     setExpanded(!expanded)
   }
 
   const animatedStyle = useAnimatedStyle(() => ({ height: height.value, overflow: "hidden" }))
   const getRankColor = (contributions: number = 0) => contributions > 70 ? "#FFD700" : "#4CD964"
-  const fuelConfig = FUEL_BRAND_MAP[station.brand] || FUEL_BRAND_MAP["Default"]
 
   return (
     <Card
@@ -210,13 +223,19 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
-            <Text size="xxs" style={$metadataText}>{station.city} • Updated {formatDistanceToNow(new Date(station.updated_at), { addSuffix: true })}</Text>
-            {station.users && (
+            <Text size="xxs" style={$metadataText}>
+                {station.city} • Updated {station.updated_at ? formatDistanceToNow(new Date(station.updated_at), { addSuffix: true }) : "recently"}
+            </Text>
+            {station.users ?  (
               <TouchableOpacity onPress={() => onPressUser(station.users)}>
                 <Text size="xxs" style={[{ color: getRankColor(station.users.no_contributions), fontWeight: 'bold' }, $metadataText]}>
-                  {" "}by {station.users.firstname}
+                  {" "}by {getDisplayName(station.users.full_name, station.users.b_show_name)}
                 </Text>
               </TouchableOpacity>
+            ) : (
+              <Text size="xxs" style={[{ color: "#8E8E93", fontWeight: 'bold' }, $metadataText]}>
+                {" "}by System
+              </Text>
             )}
           </View>
         </View>
@@ -225,13 +244,17 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
         <Animated.View style={animatedStyle}>
           <View style={$priceDashboard}>
             <View style={$priceGridContainer}>
-              {Object.keys(fuelConfig).map((key, index) => (
-                <View key={key} style={$dataEntry}>
-                  <Text style={$dataLabel}>{fuelConfig[key]}</Text>
-                  <Text style={$dataValue}>₱{(Number(station[key]) || 0).toFixed(2)}</Text>
-                  {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
-                </View>
-              ))}
+              {Object.keys(fuelConfig).length > 0 ? (
+                Object.keys(fuelConfig).map((key, index) => (
+                  <View key={key} style={$dataEntry}>
+                    <Text style={$dataLabel}>{fuelConfig[key]}</Text>
+                    <Text style={$dataValue}>₱{(Number(station[key]) || 0).toFixed(2)}</Text>
+                    {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
+                  </View>
+                ))
+              ) : (
+                <Text style={{ textAlign: 'center', width: '100%', opacity: 0.5 }}>Price data unavailable</Text>
+              )}
             </View>
           </View>
           <View style={$buttonRow}>
@@ -248,6 +271,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
   )
 }
 
+// Styles remain unchanged
 const $cardHeader: ViewStyle = { marginBottom: 8 }
 const $titleRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }
 const $stationName: TextStyle = { flex: 1 }

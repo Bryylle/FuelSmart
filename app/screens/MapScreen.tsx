@@ -26,18 +26,25 @@ import Slider from '@react-native-community/slider'
 const FUEL_MARKER = require("@assets/icons/marker_isolated.png")
 const HAIRLINE = 1 / PixelRatio.get()
 
+// UPDATED BY AI: Helper for name masking
+const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
+  if (!fullName) return "Anonymous"
+  if (bShowName) return fullName
+  return `${fullName.charAt(0)}*****`
+}
+
 interface Station {
   id: string; brand: string; city: string; latitude: number; longitude: number;
   regular_gas?: number; premium_gas?: number; sports_gas?: number;
   regular_diesel?: number; premium_diesel?: number; 
-  updated_at: string; is_verified: boolean; b_show_firstname: boolean;
+  updated_at: string; is_verified: boolean;
   reporter_id?: string; // For pending stations
-  isPending?: boolean;  // Added this
+  isPending?: boolean;  
   last_updated_by?: string;
   users?: { 
     id: string;
-    firstname: string; 
-    lastname: string; 
+    full_name: string; // UPDATED BY AI: Changed from firstname/lastname
+    b_show_name: boolean; // UPDATED BY AI: Changed from b_show_firstname
     phone?: string; 
     no_contributions?: number; 
     no_likes?: number; 
@@ -50,21 +57,17 @@ interface Station {
 interface ReportData {
   brand: string;
   city: string;
-  // Availability toggles
   has_regular_gas: boolean;
   has_premium_gas: boolean;
   has_sports_gas: boolean;
   has_regular_diesel: boolean;
   has_premium_diesel: boolean;
-  // Marketing names
   regular_gas_name: string;
   premium_gas_name: string;
   sports_gas_name: string;
   regular_diesel_name: string;
   premium_diesel_name: string;
 }
-
-// 2. Initialize the state with the proper type
 
 
 // Helper for distance calculation
@@ -81,7 +84,6 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 
 export const MapScreen: FC = () => {
   const mapRef = useRef<any>(null)
-  // 1. Create a state to hold the map's layout height
   const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 })
   const [reportData, setReportData] = useState<ReportData>({
     brand: "",
@@ -108,12 +110,12 @@ export const MapScreen: FC = () => {
   const [activeFuelType, setActiveFuelType] = useState<"gas" | "diesel">("gas")
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
   const [activeBrands, setActiveBrands] = useState<string[]>([]) 
-  const [activeDistance, setActiveDistance] = useState<number | null>(120) // Default to 120
+  const [activeDistance, setActiveDistance] = useState<number | null>(120) 
 
   const [tempFuelType, setTempFuelType] = useState<"gas" | "diesel">("gas")
   const [tempMaxPrice, setTempMaxPrice] = useState<string>("")
   const [tempBrands, setTempBrands] = useState<string[]>([]) 
-  const [tempDistance, setTempDistance] = useState<number | null>(120) // Default to 120
+  const [tempDistance, setTempDistance] = useState<number | null>(120) 
 
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [isBrandPickerVisible, setIsBrandPickerVisible] = useState(false)
@@ -127,12 +129,11 @@ export const MapScreen: FC = () => {
   useEffect(() => {
     const setup = async () => {
       await initFuelMappings()
-      setMappingsLoaded(true) // Trigger a re-render once DB data is ready
+      setMappingsLoaded(true) 
     }
     setup()
   }, [])
 
-  // 1. Update the initialization useEffect to restore Auth
   useEffect(() => {
     const initialize = async () => {
       let { status } = await Location.requestForegroundPermissionsAsync()
@@ -144,7 +145,6 @@ export const MapScreen: FC = () => {
         })
       }
 
-      // RESTORED: Get the logged in user
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setCurrentUserId(user.id)
@@ -251,7 +251,6 @@ export const MapScreen: FC = () => {
         Alert.alert("Confirmed", "Your verification has been recorded.")
       }
     } else {
-      // DENIAL / CORRECTION FLOW
       if (data === 'REPORT_DELETED_BY_DENIALS') {
         Alert.alert("Report Removed", "This station was deleted due to multiple denials.")
       } else {
@@ -263,11 +262,8 @@ export const MapScreen: FC = () => {
             { 
               text: "Yes, Correct it", 
               onPress: async () => {
-                // Guard clause: If for some reason station is null, stop here
                 if (!selectedStation) return;
-
                 const eligible = await toggleAddMode()
-                // Now TypeScript knows selectedStation exists here
                 setTempMarker({ 
                   ...region, 
                   latitude: Number(selectedStation.latitude), 
@@ -317,7 +313,6 @@ export const MapScreen: FC = () => {
   }, [selectedStation])
 
   const hasFilterApplied = useMemo(() => {
-    // Check if active values differ from their original defaults
     const isFuelChanged = activeFuelType !== "gas"
     const isPriceChanged = activeMaxPrice !== ""
     const isDistanceChanged = activeDistance !== 120 && activeDistance !== null
@@ -342,17 +337,16 @@ export const MapScreen: FC = () => {
     setIsFilterVisible(false) 
   }
 
-  // Update handleClearAll to reset to 120
   const handleClearAll = () => { 
     setTempFuelType("gas")
     setTempMaxPrice("")
     setTempBrands([])
-    setTempDistance(120) // Reset to 120
+    setTempDistance(120) 
     
     setActiveFuelType("gas")
     setActiveMaxPrice("")
     setActiveBrands([])
-    setActiveDistance(120) // Reset to 120
+    setActiveDistance(120) 
   }
 
   const toggleFavorite = async () => {
@@ -426,21 +420,18 @@ export const MapScreen: FC = () => {
 
   const { themed } = useAppTheme()
 
-  // Track the current region as the user moves the map
   const [region, setRegion] = useState({
     latitude: 12.8797,
     longitude: 121.7740,
     latitudeDelta: 15,
     longitudeDelta: 15,
   })
-  // --- NEW REPORTING STATES ---
   const [isAddMode, setIsAddMode] = useState(false)
   const [pendingStations, setPendingStations] = useState<any[]>([])
   const [reportModalVisible, setReportModalVisible] = useState(false)
-  const [tempMarker, setTempMarker] = useState(region) // Syncs with your line 249 'region'
+  const [tempMarker, setTempMarker] = useState(region) 
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // --- FETCH PENDING REPORTS ---
   const fetchPending = useCallback(async () => {
     const { data } = await supabase.from('user_reported_locations').select('*')
     if (data) setPendingStations(data)
@@ -450,7 +441,6 @@ export const MapScreen: FC = () => {
     fetchPending()
   }, [fetchPending])
 
-  // --- ELIGIBILITY & SPAM CHECK ---
   const toggleAddMode = async () => {
     if (isAddMode) {
       setIsAddMode(false)
@@ -462,7 +452,6 @@ export const MapScreen: FC = () => {
       return
     }
 
-    // 1. Check for Penalty (no_incorrect_reports >= 3)
     const { data: userData } = await supabase
       .from('users')
       .select('no_incorrect_reports')
@@ -474,7 +463,6 @@ export const MapScreen: FC = () => {
       return
     }
 
-    // 2. Check for Active Report (Spam Prevention: Max 1)
     const { count } = await supabase
       .from('user_reported_locations')
       .select('*', { count: 'exact', head: true })
@@ -485,14 +473,14 @@ export const MapScreen: FC = () => {
       return
     }
 
-    setTempMarker(region) // Start the pin at current map center
+    setTempMarker(region) 
     setIsAddMode(true)
   }
 
   const MAP_STYLE = [
     {
       featureType: "poi",
-      elementType: "all", // This covers labels AND icons
+      elementType: "all", 
       stylers: [{ visibility: "off" }],
     },
     {
@@ -514,12 +502,10 @@ export const MapScreen: FC = () => {
   const isNotAtMarkerLevel = Math.abs(region.latitudeDelta - 0.04) > 0.01;
 
   const handleFinalSubmit = async (data: ReportData, coords: any) => {
-    // 1. Check for Brand and City
     if (!data.brand.trim() || !data.city.trim()) {
       Alert.alert("Missing Information", "Please provide both the Brand and the Municipality/City.")
       return
     }
-    // 2. Check if at least one fuel toggle is active
     const hasAtLeastOneFuel = 
       data.has_regular_gas || 
       data.has_premium_gas || 
@@ -535,8 +521,6 @@ export const MapScreen: FC = () => {
       return
     }
 
-    // 3. Optional: Check if the toggled fuel actually has a name typed in
-    // This ensures they didn't just hit 'Yes' but left the label blank
     const activeTogglesWithoutNames = [
       data.has_regular_gas && !data.regular_gas_name,
       data.has_premium_gas && !data.premium_gas_name,
@@ -557,7 +541,6 @@ export const MapScreen: FC = () => {
       longitude: coords.longitude,
       brand: data.brand,
       city: data.city,
-     // Only save names if the toggle was true
       regular_gas_name: data.has_regular_gas ? data.regular_gas_name : null,
       premium_gas_name: data.has_premium_gas ? data.premium_gas_name : null,
       sports_gas_name: data.has_sports_gas ? data.sports_gas_name : null,
@@ -572,7 +555,6 @@ export const MapScreen: FC = () => {
       setReportModalVisible(false)
       setIsAddMode(false)
       await fetchPending()
-      // Reset form to empty strings
       setReportData({
         brand: "", city: "", 
         has_regular_gas: false, 
@@ -622,7 +604,6 @@ export const MapScreen: FC = () => {
     isAnimating.current = true
     const currentCamera = await mapRef.current.getCamera()
 
-    // If already tilted, flatten it. Otherwise, tilt it.
     const is3D = currentCamera.pitch > 0
 
     mapRef.current.animateCamera({
@@ -634,7 +615,6 @@ export const MapScreen: FC = () => {
       pitch: is3D ? 0 : 55,      
       zoom: is3D ? 15 : 17,       
     }, { duration: 600 })
-    // Release the lock after animation completes
     setTimeout(() => { isAnimating.current = false }, 650)
   }
 
@@ -664,7 +644,6 @@ export const MapScreen: FC = () => {
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
           showsUserLocation={true}
-          // initialRegion={{ latitude: 12.8797, longitude: 121.7740, latitudeDelta: 15, longitudeDelta: 15 }}
           onMapReady={() => setIsMapReady(true)}
           mapPadding={{top: 110, left: 0, right:0, bottom: 0}}
           toolbarEnabled={false}
@@ -673,7 +652,7 @@ export const MapScreen: FC = () => {
           onRegionChangeComplete={(newRegion) => {
             setRegion(newRegion)
             if (isAddMode) {
-              setTempMarker(newRegion) // Reporting state
+              setTempMarker(newRegion) 
             }
           }}
         >
@@ -687,7 +666,6 @@ export const MapScreen: FC = () => {
               image={FUEL_MARKER}
             />
           ))}
-          {/* Loop 2: PENDING STATIONS (New verification logic) */}
           {region.latitudeDelta < 0.05 && pendingStations.map((ps) => (
             <Marker 
               key={`pending-${ps.id}`} 
@@ -698,7 +676,6 @@ export const MapScreen: FC = () => {
           ))}
         </MapView>
 
-        {/* 3. Place Crosshair inside the same View */}
         {isAddMode && (
           <View 
             style={[
@@ -706,8 +683,6 @@ export const MapScreen: FC = () => {
               { 
                 width: mapLayout.width,
                 height: mapLayout.height,
-                // OFFSET: Move the crosshair up by half of the bottom mapPadding
-                // to stay aligned with Google's logical center
                 marginTop: 55, 
               }
             ]} 
@@ -752,7 +727,6 @@ export const MapScreen: FC = () => {
               
               <Text text="Available Fuel Types" weight="bold" style={{ marginTop: 20, marginBottom: 5 }} />
               
-              {/* All 5 Toggles */}
               {renderFuelToggle("Regular Gasoline", "has_regular_gas", "regular_gas_name", "e.g. FuelSave")}
               {renderFuelToggle("Premium Gasoline", "has_premium_gas", "premium_gas_name", "e.g. V-Power")}
               {renderFuelToggle("Sports Gasoline", "has_sports_gas", "sports_gas_name", "e.g. V-Power Racing")}
@@ -775,7 +749,6 @@ export const MapScreen: FC = () => {
         </View>
       </Modal>
 
-      {/* 3D View Toggle Button */}
       {region.latitudeDelta < 0.05 && (
         <TouchableOpacity 
           style={[$utilityBtn, { bottom: 190 }]} 
@@ -785,7 +758,6 @@ export const MapScreen: FC = () => {
         </TouchableOpacity>
       )}
 
-      {/* Floating Action Button to toggle Add Mode */}
       {region.latitudeDelta < 0.05 && (
         <TouchableOpacity 
           style={[$fab, { backgroundColor: isAddMode ? colors.palette.angry500 : colors.palette.primary500 }]} 
@@ -795,7 +767,6 @@ export const MapScreen: FC = () => {
         </TouchableOpacity>
       )}
 
-      {/* The Placement Bar that appears when in Add Mode */}
       {isAddMode && (
         <Animated.View entering={FadeInUp} style={$placementBar}>
           <Text text="Center the station on the crosshair" style={{ color: 'white', marginBottom: 8 }} />
@@ -874,7 +845,6 @@ export const MapScreen: FC = () => {
         )}
       </View>
 
-      {/* Attribution Layer */}
       <View style={$attributionContainer}>
         <View style={{ flex: 1 }} /> 
         <TouchableOpacity 
@@ -919,17 +889,24 @@ export const MapScreen: FC = () => {
           <View style={$userInfoCard}>
             <View style={$profileHeader}>
               <View style={$avatarCircle}>
+                {/* UPDATED BY AI: initials logic for full_name */}
                 <Text 
                   style={$avatarText} 
-                  text={(selectedStation?.users?.firstname?.substring(0,1)?.toUpperCase() || "") + (selectedStation?.users?.lastname?.substring(0,1)?.toUpperCase() || "")} 
+                  text={selectedStation?.users?.full_name?.substring(0,1)?.toUpperCase() || ""} 
                   size="xl" 
                   weight="bold" 
                 />
               </View>
               <View style={$nameContainer}>
                 <View style={$tierRow}>
-                  <Text preset="subheading" weight="bold" style={{ color: "black" }}>
-                    {selectedStation?.users?.firstname} {selectedStation?.users?.lastname}
+                   {/* UPDATED BY AI: Masked name and overflow handling */}
+                  <Text 
+                    preset="subheading" 
+                    weight="bold" 
+                    style={{ color: "black", flexShrink: 1 }} 
+                    numberOfLines={1}
+                  >
+                    {getDisplayName(selectedStation?.users?.full_name, selectedStation?.users?.b_show_name ?? true)}
                   </Text>
                   <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                 </View>
@@ -948,7 +925,6 @@ export const MapScreen: FC = () => {
               </View>
             </View>
 
-            {/* Logic: Only show voting if NOT the current user */}
             {selectedStation?.users?.id && selectedStation?.users?.id !== currentUserId && (
               <View style={[$feedbackRowExpanded, { marginTop: 10 }]}>
                 <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
@@ -975,9 +951,6 @@ export const MapScreen: FC = () => {
           <View style={$modalOverlay}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => !isReporting && setSelectedStation(null)} />
             
-            {/* GUARD: Only render inner logic if selectedStation exists. 
-                This prevents the "Cannot read property of null" crash on screen load.
-            */}
             {selectedStation && (
               <Animated.View entering={FadeIn} style={$detailCard}>
                 <TouchableOpacity onPress={() => setSelectedStation(null)} style={$dismissHandle}>
@@ -985,7 +958,6 @@ export const MapScreen: FC = () => {
                 </TouchableOpacity>
                 
                 <View style={$innerContent}>
-                  {/* 1. HEADER - RESTORED LEGACY LOGIC */}
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                     <View style={{ flex: 1 }}>
                       <Text weight="bold" size="md">{selectedStation.brand}</Text>
@@ -994,11 +966,11 @@ export const MapScreen: FC = () => {
                           {selectedStation.city} • {selectedStation.updated_at ? formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : "Recent"}
                         </Text>
                         
-                        {/* LEGACY CONTRIBUTOR LOGIC - EXACTLY AS PER RAW FILE */}
                         {selectedStation.users ? (
                           <TouchableOpacity onPress={() => setIsUserInfoVisible(true)}>
+                            {/* UPDATED BY AI: Used masked name logic here */}
                             <Text size="xxs" style={{ color: getRankColor(selectedStation.users.no_contributions), fontWeight: 'bold' }}>
-                              {" "}by {selectedStation.b_show_firstname ? selectedStation.users.firstname : `${selectedStation.users.firstname} ${selectedStation.users.lastname || ""}`}
+                              {" "}by {getDisplayName(selectedStation.users.full_name, selectedStation.users.b_show_name)}
                             </Text>
                           </TouchableOpacity>
                         ) : (
@@ -1009,7 +981,6 @@ export const MapScreen: FC = () => {
                       </View>
                     </View>
 
-                    {/* LEGACY FAVORITE BUTTON */}
                     {!selectedStation.isPending && (
                       <TouchableOpacity onPress={toggleFavorite} style={$favoriteBtn}>
                         <Icon icon="heart" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
@@ -1017,9 +988,7 @@ export const MapScreen: FC = () => {
                     )}
                   </View>
 
-                  {/* 2. BODY BRANCHING */}
                   {selectedStation.isPending ? (
-                    /* --- PENDING MARKER UI (FROM TXT FILE) --- */
                     <View style={{ marginTop: 15 }}>
                       <View style={{ backgroundColor: '#FFF9E6', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FFE58F' }}>
                         <Text text="User Reported Location" size="xs" weight="bold" style={{ color: '#856404' }} />
@@ -1035,7 +1004,6 @@ export const MapScreen: FC = () => {
                         </View>
                       </View>
                       
-                      {/* SAFE REPORTER CHECK */}
                       {currentUserId === selectedStation.reporter_id ? (
                         <View style={{ marginTop: 20, alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12 }}>
                           <Text text="Waiting for others to verify your report..." size="xxs" style={{ opacity: 0.5 }} />
@@ -1052,7 +1020,6 @@ export const MapScreen: FC = () => {
                       )}
                     </View>
                   ) : (
-                    /* --- LEGACY PRICE DASHBOARD (FROM RAW FILE) --- */
                     <View style={$priceDashboard}>
                       <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
                         <View style={$priceGridContainer}>
@@ -1076,7 +1043,6 @@ export const MapScreen: FC = () => {
                   )}
                 </View>
 
-                {/* 3. FOOTER - LEGACY DIRECTIONS & UPDATE BUTTONS */}
                 {!selectedStation.isPending && (
                   <View style={$buttonAbsoluteWrapper}>
                     <View style={$buttonRow}>
@@ -1124,7 +1090,7 @@ const $utilityBtn: ViewStyle = {
   width: 50,
   height: 50,
   borderRadius: 25,
-  backgroundColor: "#1737ba", // Matching your header color
+  backgroundColor: "#1737ba", 
   justifyContent: 'center',
   alignItems: 'center',
   elevation: 5,
@@ -1154,10 +1120,10 @@ const $toggleBtnActive: ViewStyle = {
 }
 const $crosshairContainer: ViewStyle = {
   position: 'absolute',
-  top: 0, // Ensure it starts at the top of the Map View
+  top: 0, 
   left: 0,
-  justifyContent: "center", // This centers the icon vertically
-  alignItems: "center",     // This centers the icon horizontally
+  justifyContent: "center", 
+  alignItems: "center",     
   opacity: 0.8,
   zIndex: 10,
 }
@@ -1170,7 +1136,7 @@ const $crosshairDot: ViewStyle = {
 }
 const $fab: ViewStyle = {
   position: 'absolute',
-  bottom: 120, // Positioned above the attribution/google logo
+  bottom: 120, 
   right: 20,
   width: 60,
   height: 60,
@@ -1187,7 +1153,7 @@ const $fab: ViewStyle = {
 
 const $placementBar: ViewStyle = {
   position: 'absolute',
-  top: 160, // Positioned below your search bar
+  top: 160, 
   left: 20,
   right: 20,
   backgroundColor: 'rgba(0,0,0,0.85)',
@@ -1224,7 +1190,7 @@ const $pendingNotice: ViewStyle = {
 }
 const $attributionContainer: ViewStyle = {
   position: "absolute",
-  bottom: 8, // Levels it horizontally with the Google logo
+  bottom: 8, 
   left: 10,
   right: 10,
   flexDirection: "row",
@@ -1240,18 +1206,18 @@ const $attributionBackground: ViewStyle = {
 }
 
 const $attributionText: TextStyle = {
-  fontSize: 10, // Increased by 2px
+  fontSize: 10, 
   color: "#444",
 }
 
 const $linkText: TextStyle = {
-  fontSize: 11, // Increased by 2px
-  color: "#007AFF", // Standard iOS-style link blue
+  fontSize: 11, 
+  color: "#007AFF", 
 }
 const $markerLevelButtonWrapper: ViewStyle = {
   position: "absolute",
-  bottom: 40, // Sit above the station card
-  alignSelf: "center", // Center it to make it look like a "Search this area" button
+  bottom: 40, 
+  alignSelf: "center", 
   zIndex: 99,
 }
 

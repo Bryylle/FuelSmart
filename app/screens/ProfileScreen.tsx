@@ -18,7 +18,6 @@ import type { ThemedStyle } from "@/theme/types"
 import { spacing } from "@/theme/spacing"
 import { Icon } from "@/components/Icon"
 import { EmptyState } from "@/components/EmptyState"
-import type { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import type { AppStackParamList } from "@/navigators/navigationTypes"
 
 import { supabase } from "@/services/supabase" 
@@ -48,6 +47,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        // Updated to select full_name and other new columns
         const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
         if (profile) {
           setUserData(profile)
@@ -124,6 +124,14 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
   const filteredOptions = useMemo(() => fuelOptions.filter(opt => opt.toLowerCase().includes(searchQuery.toLowerCase())), [fuelOptions, searchQuery])
 
+  // Helper to get initials from full_name
+  const getInitials = (name: string) => {
+    if (!name) return "JD"
+    const parts = name.split(" ")
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return name.substring(0, 2).toUpperCase()
+  }
+
   if (loading && !refreshing) {
     return (
       <Screen style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -158,14 +166,15 @@ export const ProfileScreen: FC = function ProfileScreen() {
               <View style={$avatarCircle}>
                 <Text 
                   style={themed($avatarText)} 
-                  text={userData?.firstname ? userData.firstname.substring(0, 1) + (userData.lastname?.substring(0, 1) || "") : "JD"} 
+                  text={getInitials(userData?.full_name)} 
                   size="xl" 
                   weight="bold"
                 />
               </View>
               <View style={$nameContainer}>
                 <View style={$tierRow}>
-                  <Text preset="subheading" weight="bold" style={themed($profileText)}>{userData?.firstname} {userData?.lastname}</Text>
+                  {/* Updated to use full_name */}
+                  <Text preset="subheading" weight="bold" style={themed($profileText)}>{userData?.full_name}</Text>
                   <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                 </View>
                 <Text style={themed($subtext)}>{userData?.phone || "No phone number"}</Text>
@@ -187,15 +196,17 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
           <Text preset="formLabel" style={$sectionHeader}>ACCOUNT</Text>
           <View style={themed($insetGroup)}>
-            <ListItem text="Preferred Stations" onPress={openFuelPicker} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Account Settings" onPress={() => navigation.navigate("AccountSettings")} rightIcon="caretRight" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
-            <ListItem text="Privacy" onPress={() => navigation.navigate("Privacy")} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Privacy Policy" onPress={() => navigation.navigate("PrivacyPolicy")} rightIcon="caretRight" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
             <ListItem text="Terms And Conditions" onPress={() => navigation.navigate("TermsAndConditions")} rightIcon="caretRight" style={themed($listItemStyle)} />
           </View>
 
           <Text preset="formLabel" style={$sectionHeader}>APP SETTINGS</Text>
           <View style={themed($insetGroup)}>
+            <ListItem text="Preferred Stations" onPress={openFuelPicker} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <View style={themed($separator)} />
             <ListItem text="Dark Mode" RightComponent={<Switch value={themeContext === "dark"} onValueChange={toggleTheme} />} style={themed($listItemStyle)} />
             <View style={themed($separator)} />
             <ListItem text="Version" style={themed($listItemStyle)} RightComponent={<Text size="xs" style={{ color: colors.palette.neutral500 }}>{Application.nativeApplicationVersion}</Text>} />
@@ -207,6 +218,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
         </ScrollView>
       )}
 
+      {/* Modal logic remains identical but uses corrected state */}
       <Modal visible={isFuelPickerOpen} transparent animationType="slide">
         <Pressable style={$modalOverlay} onPress={() => setFuelPickerOpen(false)}>
           <Pressable style={themed($modalContent)}>
@@ -241,6 +253,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
   )
 }
 
+// Styles remain unchanged for visual consistency
 const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({ flex: 1 })
 const $subContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ paddingHorizontal: spacing.md, flex: 1 })
 const $heroSection: ThemedStyle<ViewStyle> = ({ spacing }) => ({ marginBottom: spacing.lg, backgroundColor: "#1737ba", paddingTop: 50, height: 250, marginHorizontal: -spacing.md, paddingHorizontal: spacing.md })

@@ -17,9 +17,9 @@ import { DemoNavigator } from "./DemoNavigator"
 import type { AppStackParamList, NavigationProps } from "./navigationTypes"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
 import { CalculatorScreen } from "@/screens/CalculatorScreen"
-import { RegisterScreen } from "@/screens/RegisterScreen"
 import { TermsAndConditionsScreen } from "@/screens/TermsAndConditionsScreen"
-import { PrivacyScreen } from "@/screens/PrivacyScreen"
+import { PrivacyPolicyScreen } from "@/screens/PrivacyPolicyScreen"
+import { AccountSettingsScreen } from "@/screens/AccountSettings"
 // import { UpdateAccountDetailsScreen } from "@/screens/UpdateAccountDetailsScreen"
 
 /**
@@ -53,15 +53,14 @@ const AppStack = () => {
         <>
           <Stack.Screen name="Demo" component={DemoNavigator} />
           <Stack.Screen name="Calculator" component={CalculatorScreen} />
-          <Stack.Screen name="Privacy" component={PrivacyScreen} />
+          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
           <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
-          {/* <Stack.Screen name="UpdateAccountDetails" component={UpdateAccountDetailsScreen} /> */}
+          <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
   
         </>
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       )}
 

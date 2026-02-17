@@ -1,11 +1,11 @@
-import { FC, useRef, useCallback } from "react"
+import React, { FC, useRef, useCallback, useState } from "react"
 import {
   Pressable,
   View,
   ViewStyle,
   TextStyle,
   ScrollView,
-  Button,
+  useWindowDimensions,
 } from "react-native"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
@@ -16,31 +16,37 @@ import { Icon } from "@/components/Icon"
 import { Header } from "@/components/Header"
 
 export const TermsAndConditionsScreen: FC<DemoTabScreenProps<"TermsAndConditions">> = ({ navigation }) => {
-  const { themed } = useAppTheme() // Access spacing from context
+  const { themed, theme } = useAppTheme()
+  const { height: screenHeight } = useWindowDimensions()
+  const [scrollOffset, setScrollOffset] = useState(0)
   
- const scrollRef = useRef<ScrollView | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
 
   const setScrollRef = useCallback((node: ScrollView | null) => {
     scrollRef.current = node;
   }, []);
 
+  const scrollToTop = () => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
 
-const scrollToTop = () => {
-  scrollRef.current?.scrollTo({ y: 0, animated: true });
-};
+  const handleScroll = (event: any) => {
+    setScrollOffset(event.nativeEvent.contentOffset.y)
+  }
 
-
+  const isScrollButtonVisible = scrollOffset > screenHeight / 2
 
   return (
+    <View style={$container}>
       <Screen
         preset="scroll"
         ScrollViewProps={
           {
             keyboardShouldPersistTaps: "handled",
             ref: setScrollRef,
-          } as unknown as React.ComponentProps<typeof import("react-native").ScrollView> & {
-            ref: (node: ScrollView | null) => void;
-          }
+            onScroll: handleScroll,
+            scrollEventThrottle: 16,
+          } as any
         }
       >
 
@@ -62,7 +68,6 @@ const scrollToTop = () => {
         titleStyle={themed($headerTitle)}
       />
       
-      {/* Content Starts Here, placed inside the scrollable area */}
       <View style={themed($contentWrapper)}>
         <Text preset="subheading" style={{ marginBottom: 19 }}>TERMS AND CONDITIONS</Text>
         <Text size="xs" style={themed($lastUpdatedText)}>Last Updated: [Insert Date]</Text>
@@ -136,12 +141,25 @@ const scrollToTop = () => {
           If you have any questions regarding these Terms, please contact us at: **[Insert Contact Email]**
         </Text>
       </View>
-      <Pressable onPress={scrollToTop}>X</Pressable>
     </Screen>
+
+    {isScrollButtonVisible && (
+        <Pressable 
+          onPress={scrollToTop} 
+          style={[$fab, { backgroundColor: theme.colors.palette.primary500 }]}
+        >
+          <Icon icon="caretUp" size={24} color="#fff" />
+        </Pressable>
+      )}
+    </View>
   )
 }
 
 // #region Styles
+const $container: ViewStyle = {
+  flex: 1,
+}
+
 const $headerStyle: ThemedStyle<ViewStyle> = () => ({
   backgroundColor: "#1737ba",
 })
@@ -156,13 +174,9 @@ const $leftActionWrapper: ViewStyle = {
   marginLeft: 16,
 }
 
-// The screen container now handles padding for the ScrollView content
-const $screenContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  paddingBottom: spacing.xxl, // Ensure there's space at the bottom when scrolling
-})
-
 const $contentWrapper: ThemedStyle<ViewStyle> = ({ spacing }) => ({
     paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xxl,
 })
 
 const $paragraph: ThemedStyle<TextStyle> = ({ spacing }) => ({
@@ -188,4 +202,20 @@ const $bulletList: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 const $bulletItem: ThemedStyle<TextStyle> = ({ spacing }) => ({
     marginVertical: spacing.xs,
 })
+
+const $fab: ViewStyle = {
+  position: "absolute",
+  bottom: 24,
+  right: 24,
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  justifyContent: "center",
+  alignItems: "center",
+  elevation: 5,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+}
 // #endregion
