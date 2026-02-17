@@ -920,24 +920,16 @@ export const MapScreen: FC = () => {
                 <Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text>
               </View>
               <View style={$statBox}>
-                <Text weight="bold" style={$statValue}>{selectedStation?.users?.no_likes || 0}</Text>
-                <Text size="xxs" style={$statLabel}>LIKES</Text>
+                <Text weight="bold" style={$statValue}>{selectedStation?.users?.no_incorrect_reports || 0}</Text>
+                <Text size="xxs" style={$statLabel}>INCORRECT REPORTS</Text>
               </View>
             </View>
 
-            {selectedStation?.users?.id && selectedStation?.users?.id !== currentUserId && (
-              <View style={[$feedbackRowExpanded, { marginTop: 10 }]}>
-                <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('dislike')} disabled={isVoting}>
-                  <Icon icon="check" size={22} color="#FF3B30" />
-                  <Text size="xs" weight="bold" style={{ color: '#FF3B30', marginTop: 4 }}>{selectedStation?.users?.no_incorrect_reports || 0} Incorrect reports</Text>
-                </TouchableOpacity>
-                <View style={$verticalDividerFeedback} />
-                <TouchableOpacity style={$feedbackBtn} onPress={() => handleVote('like')} disabled={isVoting}>
-                  <Icon icon="heart" size={22} color="#4CD964" />
-                  <Text size="xs" weight="bold" style={{ color: '#4CD964', marginTop: 4 }}>{selectedStation?.users?.no_likes || 0} Likes</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            <View>
+              {/* I need phone number detail here based from user's show my gcash/maya */}
+              {/* If gcash only is enabled, show gcash icon. if maya show maya. if both show both. if both off, do not show phone number */}
+              {/* when user pressed the number, it should automatically copy in the clipboard. also add copy icon */}
+            </View>
 
             <TouchableOpacity style={[$closeBtn, { marginTop: 15 }]} onPress={() => setIsUserInfoVisible(false)}>
               <Text style={{ color: "white", fontWeight: "600" }}>Close</Text>

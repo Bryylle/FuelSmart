@@ -25,6 +25,10 @@ import { supabase } from "@/services/supabase"
 
 const HAIRLINE = 1 / PixelRatio.get()
 
+const icon_medal_gold = require("@assets/icons/download/medal-gold.png")
+const icon_medal_silver = require("@assets/icons/download/medal-silver.png")
+const icon_medal_bronze = require("@assets/icons/download/medal-bronze.png")
+
 export const ProfileScreen: FC = function ProfileScreen() {
   const { setThemeContextOverride, themeContext, themed } = useAppTheme()
   const { logout } = useAuth()
@@ -152,11 +156,11 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
   const filteredOptions = useMemo(() => fuelOptions.filter(opt => opt.toLowerCase().includes(searchQuery.toLowerCase())), [fuelOptions, searchQuery])
 
-  const getInitials = (name: string) => {
-    if (!name) return "JD"
-    const parts = name.split(" ")
-    return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase()
-  }
+  // const getInitials = (name: string) => {
+  //   if (!name) return ""
+  //   const parts = name.split(" ")
+  //   return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase()
+  // }
 
   if (loading && !refreshing) {
     return <Screen style={{ justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color={colors.palette.primary500} /></Screen>
@@ -172,11 +176,19 @@ export const ProfileScreen: FC = function ProfileScreen() {
         <ScrollView style={themed($subContainer)} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
           <View style={themed($heroSection)}>
             <View style={$profileHeader}>
-              <View style={$avatarCircle}><Text style={themed($avatarText)} text={getInitials(userData?.full_name)} size="xl" weight="bold"/></View>
+              <View style={$avatarCircle}><Text style={themed($avatarText)} text={userData?.full_name.substring(0,1)?.toUpperCase() || ""} size="xl" weight="bold"/></View>
               <View style={$nameContainer}>
                 <View style={$tierRow}>
                   <Text preset="subheading" weight="bold" style={themed($profileText)}>{userData?.full_name}</Text>
-                  <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
+                  {userData?.no_contributions > 0 && (
+                    <>
+                      <Image source={
+                        userData?.no_contributions < 50 ? icon_medal_bronze : 
+                        userData?.no_contributions < 100 ? icon_medal_silver :
+                        /*userData?.no_contributions >  100 ? */ icon_medal_gold
+                        } style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
+                    </>
+                  )}
                 </View>
                 <Text style={themed($subtext)}>{userData?.phone || "No phone number"}</Text>
               </View>

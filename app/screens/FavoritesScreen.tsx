@@ -159,7 +159,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
                 <View style={$avatarCircle}>
                    <Text 
                       style={$avatarText} 
-                      text={selectedUser?.full_name?.substring(0,1)?.toUpperCase() || "?"} 
+                      text={selectedUser?.full_name?.substring(0,1)?.toUpperCase() || ""} 
                       size="xl" 
                       weight="bold" 
                     />
