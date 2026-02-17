@@ -57,7 +57,11 @@ export const LoginScreen: FC<LoginScreenProps> = ({ navigation }) => {
         provider: 'google',
         options: {
           redirectTo: OAUTH_REDIRECT_URL,
-          skipBrowserRedirect: false, 
+          skipBrowserRedirect: false,
+          queryParams: {
+            prompt: 'select_account',
+            access_type: 'offline',
+          },
         },
       })
 
@@ -176,7 +180,7 @@ export const LoginScreen: FC<LoginScreenProps> = ({ navigation }) => {
           By continuing, you agree to our{" "}
           <Text text="Terms" size="xxs" style={$link} onPress={() => navigation.navigate("TermsAndConditions")} />
           {" and "}
-          <Text text="Privacy Policy" size="xxs" style={$link} onPress={() => navigation.navigate("Privacy")} />.
+          <Text text="Privacy Policy" size="xxs" style={$link} onPress={() => navigation.navigate("PrivacyPolicy")} />.
         </Text>
       </View>
     </Screen>
