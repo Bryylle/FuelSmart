@@ -174,7 +174,13 @@ export const MapScreen: FC = () => {
 
       const formattedData = data?.map((station: any) => ({
         ...station,
-        users: (station.users && station.users.id) ? station.users : null
+        users: station.users ? {
+          ...station.users,
+          // Explicit mapping ensures these fields are not dropped
+          phone: station.users.phone, 
+          b_show_gcash: !!station.users.b_show_gcash,
+          b_show_maya: !!station.users.b_show_maya,
+        } : null
       }))
 
       setStations(formattedData || [])
@@ -618,6 +624,13 @@ export const MapScreen: FC = () => {
     setTimeout(() => { isAnimating.current = false }, 650)
   }
 
+  console.log("DEBUG - User Payment Data:", {
+    hasUser: !!selectedStation?.users,
+    phone: selectedStation?.users?.phone,
+    showGcash: selectedStation?.users?.b_show_gcash,
+    showMaya: selectedStation?.users?.b_show_maya,
+  });
+
   return (
     <Screen contentContainerStyle={{ flex: 1 }}>
       <Header
@@ -925,10 +938,50 @@ export const MapScreen: FC = () => {
               </View>
             </View>
 
-            <View>
+            {/* <View> */}
               {/* I need phone number detail here based from user's show my gcash/maya */}
               {/* If gcash only is enabled, show gcash icon. if maya show maya. if both show both. if both off, do not show phone number */}
               {/* when user pressed the number, it should automatically copy in the clipboard. also add copy icon */}
+            {/* </View> */}
+
+            <View style={$paymentContainer}>
+              {(selectedStation?.users?.b_show_gcash || selectedStation?.users?.b_show_maya) && selectedStation?.users?.phone && (
+                <TouchableOpacity 
+                  style={$paymentCard} 
+                  onPress={() => handleCopyNumber(selectedStation.users?.phone || "")}
+                  activeOpacity={0.8}
+                >
+                  {/* Top Row: Label and Copy Icon */}
+                  <View style={$cardTopRow}>
+                    <Text size="xxs" weight="bold" style={{ color: "#8E8E93" }}>
+                      TIP VIA GCASH / MAYA
+                    </Text>
+                    <Icon icon="search" size={16} color={colors.palette.primary500} />
+                  </View>
+
+                  {/* Bottom Row: Logos and Number */}
+                  <View style={$cardBottomRow}>
+                    <View style={$logoGroup}>
+                      {selectedStation.users.b_show_gcash && (
+                        <Image 
+                          source={require("@assets/icons/search.png")} 
+                          resizeMode="contain" 
+                        />
+                      )}
+                      {selectedStation.users.b_show_maya && (
+                        <Image 
+                          source={require("@assets/icons/search.png")} 
+                          resizeMode="contain" 
+                        />
+                      )}
+                    </View>
+                    
+                    <Text weight="semiBold" style={$phoneNumberText}>
+                      {selectedStation.users.phone}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
 
             <TouchableOpacity style={[$closeBtn, { marginTop: 15 }]} onPress={() => setIsUserInfoVisible(false)}>
@@ -1060,6 +1113,63 @@ export const MapScreen: FC = () => {
     </Screen>
   )
 }
+const $paymentContainer: ViewStyle = {
+  marginTop: 16,
+  paddingTop: 16,
+  borderTopWidth: HAIRLINE,
+  borderTopColor: "#E5E5EA",
+}
+
+const $paymentCard: ViewStyle = {
+  backgroundColor: "#F2F2F7",
+  borderRadius: 12,
+  padding: 12,
+  borderWidth: 1,
+  borderColor: "#E5E5EA",
+}
+
+const $cardTopRow: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 8,
+}
+
+const $cardBottomRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+}
+
+const $logoGroup: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 6,
+  marginRight: 12,
+}
+
+
+const $phoneNumberText: TextStyle = {
+  fontSize: 17,
+  color: "#1C1C1E",
+  letterSpacing: 0.5,
+}
+const $phoneRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  backgroundColor: "#F8F9FA",
+  padding: 12,
+  borderRadius: 12,
+  marginTop: 15,
+  borderWidth: 1,
+  borderColor: "#E5E5EA",
+}
+
+const $phoneInfo: ViewStyle = { flex: 1 }
+
+const $paymentIcons: ViewStyle = { flexDirection: "row", gap: 8 }
+
+const $paymentLogo: ViewStyle = { width: 24, height: 24 }
 const $fuelTag: ViewStyle = {
   backgroundColor: "white",
   paddingHorizontal: 8,
