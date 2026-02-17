@@ -33,6 +33,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [userData, setUserData] = useState<any>(null)
+  const [userRole, setUserRole] = useState<string | null>(null) // Added state for role
   const [fuelOptions, setFuelOptions] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [preferredStations, setPreferredStations] = useState<string[]>(["None"])
@@ -47,10 +48,11 @@ export const ProfileScreen: FC = function ProfileScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        // Updated to select full_name and other new columns
+        // Fetch profile data including the role
         const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
         if (profile) {
           setUserData(profile)
+          setUserRole(profile.role) // Set the role state
           if (profile.preferred_stations?.length > 0) {
             setPreferredStations(profile.preferred_stations)
           }
@@ -124,7 +126,6 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
   const filteredOptions = useMemo(() => fuelOptions.filter(opt => opt.toLowerCase().includes(searchQuery.toLowerCase())), [fuelOptions, searchQuery])
 
-  // Helper to get initials from full_name
   const getInitials = (name: string) => {
     if (!name) return "JD"
     const parts = name.split(" ")
@@ -173,7 +174,6 @@ export const ProfileScreen: FC = function ProfileScreen() {
               </View>
               <View style={$nameContainer}>
                 <View style={$tierRow}>
-                  {/* Updated to use full_name */}
                   <Text preset="subheading" weight="bold" style={themed($profileText)}>{userData?.full_name}</Text>
                   <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                 </View>
@@ -212,13 +212,28 @@ export const ProfileScreen: FC = function ProfileScreen() {
             <ListItem text="Version" style={themed($listItemStyle)} RightComponent={<Text size="xs" style={{ color: colors.palette.neutral500 }}>{Application.nativeApplicationVersion}</Text>} />
           </View>
 
+          {/* ADMIN SECTION - Properly integrated inside the ScrollView */}
+          {userRole?.toLowerCase() === "admin" && (
+            <>
+              <Text preset="formLabel" style={$sectionHeader}>ADMIN WORKS</Text>
+              <View style={themed($insetGroup)}>
+                <ListItem 
+                  text="Update Oil Price Forecast" 
+                  onPress={() => navigation.navigate("UpdateOilPriceForecast")} 
+                  rightIcon="caretRight" 
+                  style={themed($listItemStyle)} 
+                />
+              </View>
+            </>
+          )}
+
           <View style={$footer}>
             <Button style={themed($logoutButton)} text="Log Out" onPress={logout} />
           </View>
         </ScrollView>
       )}
 
-      {/* Modal logic remains identical but uses corrected state */}
+      {/* Modal logic */}
       <Modal visible={isFuelPickerOpen} transparent animationType="slide">
         <Pressable style={$modalOverlay} onPress={() => setFuelPickerOpen(false)}>
           <Pressable style={themed($modalContent)}>
@@ -253,16 +268,16 @@ export const ProfileScreen: FC = function ProfileScreen() {
   )
 }
 
-// Styles remain unchanged for visual consistency
-const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({ flex: 1 })
+// Styles 
+const $container: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
 const $subContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ paddingHorizontal: spacing.md, flex: 1 })
 const $heroSection: ThemedStyle<ViewStyle> = ({ spacing }) => ({ marginBottom: spacing.lg, backgroundColor: "#1737ba", paddingTop: 50, height: 250, marginHorizontal: -spacing.md, paddingHorizontal: spacing.md })
-const $profileText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: "#fff" })
-const $subtext: ThemedStyle<TextStyle> = ({ colors }) => ({ color: "#fff", fontSize: 14 })
+const $profileText: ThemedStyle<TextStyle> = () => ({ color: "#fff" })
+const $subtext: ThemedStyle<TextStyle> = () => ({ color: "#fff", fontSize: 14 })
 const $statsCard: ThemedStyle<ViewStyle> = ({ colors }) => ({ flexDirection: "row", backgroundColor: colors.palette.neutral800, borderRadius: 16, padding: 16 })
 const $profileHeader: ViewStyle = { flexDirection: "row", alignItems: "center", marginBottom: 20 }
 const $avatarCircle: ViewStyle = { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.palette.neutral300, marginRight: 16, alignItems: "center", justifyContent: "center" }
-const $avatarText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: "blue" })
+const $avatarText: ThemedStyle<TextStyle> = () => ({ color: "blue" })
 const $nameContainer: ViewStyle = { flex: 1, justifyContent: "center" }
 const $tierRow: ViewStyle = { flexDirection: "row", alignItems: "center" }
 const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
@@ -274,7 +289,7 @@ const $insetGroup: ThemedStyle<ViewStyle> = ({ colors }) => ({ backgroundColor: 
 const $listItemStyle: ThemedStyle<ViewStyle> = ({ colors }) => ({ borderBottomWidth: HAIRLINE, borderBottomColor: colors.palette.neutral300, paddingHorizontal: 16, alignItems: "center" })
 const $separator: ThemedStyle<ViewStyle> = ({ colors }) => ({ height: HAIRLINE, backgroundColor: colors.palette.neutral300 })
 const $footer: ViewStyle = { marginTop: 10, marginBottom: 40 }
-const $logoutButton: ThemedStyle<ViewStyle> = ({ colors }) => ({ backgroundColor: "transparent", borderColor: "red", borderWidth: 2, color: "red" })
+const $logoutButton: ThemedStyle<ViewStyle> = () => ({ backgroundColor: "transparent", borderColor: "red", borderWidth: 2, color: "red" })
 const $modalOverlay: ViewStyle = { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }
 const $modalContent: ThemedStyle<ViewStyle> = ({ colors }) => ({ backgroundColor: colors.background, width: '85%', borderRadius: 16, padding: 20 })
 const $modalHeader: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }

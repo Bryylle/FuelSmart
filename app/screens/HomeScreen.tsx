@@ -1,4 +1,4 @@
-import React, { FC, ReactElement, useCallback, useMemo, useState } from "react"
+import React, { FC, ReactElement, useCallback, useMemo, useState, useEffect } from "react"
 import {
   View,
   ScrollView,
@@ -7,7 +7,8 @@ import {
   ViewStyle,
   TextStyle,
   ColorValue,
-  Linking, //
+  Linking,
+  RefreshControl,
 } from "react-native"
 
 import { Screen } from "@/components/Screen"
@@ -25,6 +26,12 @@ import { translate } from "@/i18n/translate"
 import type { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useNavigation } from "@react-navigation/native"
 
+// Utility for smooth refresh experience
+import { delay } from "@/utils/delay"
+
+// Integrated Supabase import
+import { supabase } from "@/services/supabase"
+
 type ServiceItem = {
   serviceKey: string
   labelTx: TxKeyPath
@@ -38,34 +45,87 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
   const { colors } = theme
   const navigation = useNavigation<any>()
 
-  const [isLoadingPrices] = useState<boolean>(false)
+  // State Management
+  const [forecast, setForecast] = useState<any>(null)
+  const [isLoadingPrices, setIsLoadingPrices] = useState<boolean>(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [isLoadingNews] = useState<boolean>(false)
-  const [hasErrorPrices] = useState<boolean>(false)
+  const [hasErrorPrices, setHasErrorPrices] = useState<boolean>(false)
   const [hasErrorNews] = useState<boolean>(false)
 
-  const forecastData = !hasErrorPrices
-    ? [
-        { fuel: "gasoline" as const, delta: 0.5 },
-        { fuel: "diesel" as const, delta: 0.3 },
-        { fuel: "kerosene" as const, delta: 0.2 },
-      ]
-    : []
+  // Fetch logic for Fuel Forecast
+  const fetchFuelForecast = useCallback(async () => {
+    try {
+      setHasErrorPrices(false)
+      const { data, error } = await supabase
+        .from("fuel_price_forecast")
+        .select("*")
+        .order("last_updated", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-  const ltoNewsHeadline = ""
+      if (error) throw error
+      
+      setForecast(data) 
+      if (!data) setHasErrorPrices(true)
+    } catch (error) {
+      console.error("Price fetch error:", error)
+      setHasErrorPrices(true)
+    } finally {
+      setIsLoadingPrices(false)
+    }
+  }, [])
+
+  const manualRefresh = async () => {
+    setRefreshing(true)
+    await Promise.allSettled([fetchFuelForecast(), delay(750)])
+    setRefreshing(false)
+  }
+
+  useEffect(() => {
+    fetchFuelForecast()
+  }, [fetchFuelForecast])
+
+  const forecastData = useMemo(() => {
+    if (!forecast || hasErrorPrices) return []
+    return [
+      { 
+        fuel: "gasoline" as const, 
+        labelTx: "demoShowroomScreen:gasoline" as TxKeyPath,
+        amount: forecast.gas_amount, 
+        isIncrease: forecast.b_gas_increase 
+      },
+      { 
+        fuel: "diesel" as const, 
+        labelTx: "demoShowroomScreen:diesel" as TxKeyPath,
+        amount: forecast.diesel_amount, 
+        isIncrease: forecast.b_diesel_increase 
+      },
+      { 
+        fuel: "kerosene" as const, 
+        labelTx: "demoShowroomScreen:kerosene" as TxKeyPath,
+        amount: forecast.kerosene_amount, 
+        isIncrease: forecast.b_kerosene_increase 
+      },
+    ]
+  }, [forecast, hasErrorPrices])
+
+  const effectiveDateLabel = useMemo(() => {
+    return forecast?.effective_date 
+      ? new Date(forecast.effective_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+      : ""
+  }, [forecast])
+
+  const lastUpdatedLabel = useMemo(() => {
+    return forecast?.last_updated 
+      ? new Date(forecast.last_updated).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+      : ""
+  }, [forecast])
 
   const onComputeTripPress = useCallback(() => {
     navigation.navigate("Calculator")
   }, [navigation])
 
-  const onOpenForecastLink = useCallback(() => {
-    // Linking.openURL("https://example.com/forecast")
-  }, [])
-
-  const onOpenNews = useCallback(() => {
-    // Linking.openURL("https://www.facebook.com/ltoph")
-  }, [])
-
-  // Refactored to handle Map Redirection
   const onFindService = useCallback((labelTx: TxKeyPath) => {
     const query = translate(labelTx)
     const url = Platform.select({
@@ -73,10 +133,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
       android: `geo:0,0?q=${query}`,
       default: `https://www.google.com/maps/search/?api=1&query=${query}`,
     })
-
-    if (url) {
-      Linking.openURL(url).catch((err) => console.error("Error opening maps", err))
-    }
+    if (url) Linking.openURL(url).catch((err) => console.error("Error opening maps", err))
   }, [])
 
   const services: ServiceItem[] = useMemo(
@@ -90,31 +147,15 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     [],
   )
 
-  const formatDelta = (d: number) => `${d >= 0 ? "+" : ""}${d.toFixed(2)} / L`
-
   const Grid: FC<{ children: React.ReactNode }> = ({ children }) => (
-    <View style={themed($grid)} accessibilityRole="list">
-      {children}
-    </View>
+    <View style={themed($grid)} accessibilityRole="list">{children}</View>
   )
 
-  type ServiceTileProps = {
-    serviceKey: string
-    labelTx: TxKeyPath
-    icon: string
-  }
-
-  const ServiceTile: FC<ServiceTileProps> = ({ labelTx, icon }) => (
+  const ServiceTile: FC<ServiceItem> = ({ labelTx, icon }) => (
     <Pressable
       onPress={() => onFindService(labelTx)}
       style={({ pressed }) => [themed($serviceTile), pressed && { opacity: 0.85 }]}
-      android_ripple={
-        Platform.OS === "android"
-          ? { color: (colors.tint as ColorValue) ?? "#999", borderless: false }
-          : undefined
-      }
-      accessibilityRole="button"
-      accessibilityLabel={translate(labelTx)}
+      android_ripple={Platform.OS === "android" ? { color: colors.tint, borderless: false } : undefined}
     >
       <View style={themed($serviceIconWrap)}>
         <Icon icon={icon as any} size={22} color={colors.tint} />
@@ -123,57 +164,8 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     </Pressable>
   )
 
-  const Pill: FC<{ label: string; icon?: string }> = ({ label, icon }) => (
-    <View style={themed($pill)}>
-      {icon ? <Icon icon={icon as any} size={12} color={colors.tint} /> : null}
-      <Text size="xs" style={themed($pillText)} text={label} />
-    </View>
-  )
-
-  const InfoRow: FC<{ labelTx: TxKeyPath; value: string | ReactElement }> = ({
-    labelTx,
-    value,
-  }) => (
-    <View
-      style={[themed($row), isRTL ? { flexDirection: "row-reverse" } : null]}
-      accessibilityRole="text"
-    >
-      <Text size="sm" style={themed($rowLabel)} tx={labelTx} />
-      {typeof value === "string" ? (
-        <Text size="sm" style={themed($rowValue)} text={value} />
-      ) : (
-        value
-      )}
-    </View>
-  )
-
-  const SectionHeader: FC<{ titleTx: TxKeyPath; onPressLink?: () => void; linkTx?: TxKeyPath }> = ({
-    titleTx,
-    onPressLink,
-    linkTx,
-  }) => (
-    <View
-      style={[themed($sectionHeader), isRTL ? { flexDirection: "row-reverse" } : null]}
-      accessibilityRole="header"
-    >
-      <Text preset="subheading" tx={titleTx} />
-      {onPressLink && linkTx ? (
-        <Pressable
-          onPress={onPressLink}
-          accessibilityRole="link"
-          accessibilityLabel={translate(linkTx)}
-          style={themed($headerLinkWrap)}
-        >
-          <Text size="xs" style={themed($headerLinkText)} tx={linkTx} />
-        </Pressable>
-      ) : null}
-    </View>
-  )
-
   const SectionCard: FC<{ children: React.ReactNode; testID?: string }> = ({ children, testID }) => (
-    <View style={themed($card)} testID={testID}>
-      {children}
-    </View>
+    <View style={themed($card)} testID={testID}>{children}</View>
   )
 
   const LoadingSkeletonRow: FC = () => (
@@ -187,77 +179,94 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     <Screen preset="scroll" safeAreaEdges={["top"]} contentContainerStyle={[$styles.flex1, themed($container)]}>
       <ScrollView
         contentContainerStyle={themed($content)}
-        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={manualRefresh} tintColor={colors.palette.primary500} />
+        }
       >
+        {/* Services */}
         <SectionCard testID="services-card">
-          <SectionHeader titleTx="demoShowroomScreen:servicesTitle" />
-          <Grid>
-            {services.map((s) => (
-              <ServiceTile key={s.serviceKey} {...s} />
-            ))}
-          </Grid>
+          <View style={themed($sectionHeader)}>
+            <Text preset="subheading" tx="demoShowroomScreen:servicesTitle" />
+          </View>
+          <Grid>{services.map((s) => (<ServiceTile key={s.serviceKey} {...s} />))}</Grid>
         </SectionCard>
 
+        {/* Forecast Card */}
         <SectionCard testID="forecast-card">
-          <SectionHeader
-            titleTx="demoShowroomScreen:forecastTitle"
-            onPressLink={onOpenForecastLink}
-            linkTx="demoShowroomScreen:sourceLink"
-          />
+          <View style={[themed($sectionHeader), { marginBottom: 4 }]}>
+            <Text preset="subheading" tx="demoShowroomScreen:forecastTitle" />
+            {!isLoadingPrices && !hasErrorPrices && lastUpdatedLabel && (
+              <Text size="xxs" style={themed($lastUpdatedText)} text={`Updated ${lastUpdatedLabel}`} />
+            )}
+          </View>
+          
+          {effectiveDateLabel && !isLoadingPrices && !hasErrorPrices && (
+            <Text 
+              size="xxs" 
+              style={{ color: colors.textDim, marginBottom: 12 }} 
+              text={`Effective by ${effectiveDateLabel}`} 
+            />
+          )}
+
           {isLoadingPrices ? (
-            <>
-              <LoadingSkeletonRow />
-              <LoadingSkeletonRow />
-              <LoadingSkeletonRow />
-            </>
+            <View style={{ gap: 10 }}><LoadingSkeletonRow /><LoadingSkeletonRow /></View>
           ) : hasErrorPrices ? (
-            <View accessible accessibilityRole="text">
-              <Text size="sm" style={themed($errorText)} tx="demoShowroomScreen:commonLoadError" />
-            </View>
+            <Text size="sm" style={themed($errorText)} tx="demoShowroomScreen:commonLoadError" />
           ) : (
             <>
-              {forecastData.map((f) => (
-                <InfoRow
-                  key={f.fuel}
-                  labelTx={
-                    f.fuel === "gasoline"
-                      ? "demoShowroomScreen:gasoline"
-                      : f.fuel === "diesel"
-                      ? "demoShowroomScreen:diesel"
-                      : "demoShowroomScreen:kerosene"
-                  }
-                  value={<Pill icon={f.delta >= 0 ? "trendingUp" : "trendingDown"} label={formatDelta(f.delta)} />}
-                />
-              ))}
-              <Text size="xs" style={themed($disclaimer)} tx="demoShowroomScreen:forecastDisclaimer" />
+              <View style={themed($priceDashboard)}>
+                <View style={themed($priceGridContainer)}>
+                  {forecastData.map((f, index) => (
+                    <View key={f.fuel} style={themed($dataEntry)}>
+                      <Text style={themed($dataLabel)} tx={f.labelTx} />
+                      <Text 
+                        style={[themed($dataValue), { color: f.isIncrease ? colors.error : colors.palette.accent500 }]}
+                        text={`${f.isIncrease ? "+" : "-"}₱${Number(f.amount || 0).toFixed(2)}`}
+                      />
+                      {index < 2 && <View style={themed($verticalDivider)} />}
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              {/* Styled Disclaimer Box */}
+              <View style={themed($disclaimerBox)}>
+                <Icon icon="information" size={14} color={colors.textDim} />
+                <Text size="xxs" style={themed($disclaimerText)} tx="demoShowroomScreen:forecastDisclaimer" />
+              </View>
             </>
           )}
         </SectionCard>
 
+        {/* LTO News */}
         <SectionCard testID="lto-card">
-          <SectionHeader titleTx="demoShowroomScreen:ltoTitle" onPressLink={onOpenNews} linkTx="demoShowroomScreen:viewMore" />
-          {isLoadingNews ? (
-            <>
-              <LoadingSkeletonRow />
-              <LoadingSkeletonRow />
-            </>
-          ) : hasErrorNews ? (
-            <View accessible accessibilityRole="text">
-              <Text size="sm" style={themed($errorText)} tx="demoShowroomScreen:commonLoadError" />
-            </View>
-          ) : ltoNewsHeadline ? (
-            <Text size="sm" text={ltoNewsHeadline} />
-          ) : (
-            <Text size="sm" style={themed($mutedText)} tx="demoShowroomScreen:ltoEmpty" />
-          )}
+          <View style={themed($sectionHeader)}>
+            <Text preset="subheading" tx="demoShowroomScreen:ltoTitle" />
+            <Pressable style={themed($headerLinkWrap)}>
+              <Text size="xs" style={themed($headerLinkText)} tx="demoShowroomScreen:viewMore" />
+            </Pressable>
+          </View>
+          <Text size="sm" style={themed($mutedText)} tx="demoShowroomScreen:ltoEmpty" />
         </SectionCard>
 
+        {/* CTA Card */}
         <SectionCard testID="cta-card">
           <Text preset="subheading" style={themed($ctaTitle)} tx="demoShowroomScreen:planTripTitle" />
           <Text size="sm" style={themed($ctaSubtitle)} tx="demoShowroomScreen:planTripSubtitle" />
-          <Button onPress={onComputeTripPress} style={themed($ctaButton)}>
-            <Text preset="bold" style={{ color: colors.background }} tx="demoShowroomScreen:planTripCta" />
+          
+          <Button 
+            onPress={onComputeTripPress} 
+            style={themed($ctaButton)}
+            RightAccessory={(props) => (
+              <Icon icon="caretRight" size={18} color={colors.background} {...props} />
+            )}
+          >
+            <Text 
+              preset="bold" 
+              style={themed($ctaButtonText)} 
+              tx="demoShowroomScreen:planTripCta" 
+            />
           </Button>
         </SectionCard>
 
@@ -266,27 +275,36 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
     </Screen>
   )
 }
+const $ctaTitle: TextStyle = { 
+  marginBottom: 4 
+}
 
-const $container: ThemedStyle<ViewStyle> = () => ({
-  paddingTop: 0,
+const $ctaSubtitle: ThemedStyle<TextStyle> = ({ colors }) => ({ 
+  color: colors.textDim, 
+  marginBottom: 16 // Increased margin for better spacing
 })
 
-const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  padding: spacing.lg,
-  gap: spacing.lg,
+const $ctaButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  marginTop: spacing.xs,
+  backgroundColor: colors.palette.primary500, // Using primary brand color
+  borderRadius: 16,
+  borderWidth: 0,
+  minHeight: 56, // Slightly taller for a more "tappable" feel
 })
+
+const $ctaButtonText: ThemedStyle<TextStyle> = ({ colors }) => ({ 
+  color: colors.background,
+  fontSize: 16,
+})
+const $container: ThemedStyle<ViewStyle> = () => ({ paddingTop: 0 })
+const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({ padding: spacing.lg, gap: spacing.lg })
 
 const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   backgroundColor: colors.background,
-  borderRadius: 12,
-  padding: spacing.lg,
+  borderRadius: 20,
+  padding: spacing.md,
   borderWidth: 1,
   borderColor: colors.border,
-  ...Platform.select({
-    ios: { shadowColor: "#000", shadowOpacity: 0.06, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8 },
-    android: { elevation: 2 },
-    default: {},
-  }),
 })
 
 const $sectionHeader: ThemedStyle<ViewStyle> = ({ spacing }) => ({
@@ -296,116 +314,45 @@ const $sectionHeader: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.md,
 })
 
-const $headerLinkWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  paddingHorizontal: spacing.xs,
-  paddingVertical: spacing.xxs,
-})
-
-const $headerLinkText: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.tint,
-  textDecorationLine: "underline",
-})
-
-const $row: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingVertical: spacing.xs,
-})
-
-const $rowLabel: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.textDim,
-})
-
-const $rowValue: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.text,
-})
-
-const $pill: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 6,
+const $priceDashboard: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: "#F2F2F7",
+  borderRadius: 16,
+  paddingVertical: 14,
+  paddingHorizontal: 8,
   borderWidth: 1,
-  borderColor: colors.tint,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: 4,
-  borderRadius: 999,
-  backgroundColor: "transparent",
+  borderColor: "#E5E5EA",
+  marginVertical: 4,
 })
 
-const $pillText: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.tint,
-})
+const $priceGridContainer: ThemedStyle<ViewStyle> = () => ({ flexDirection: "row" })
+const $dataEntry: ThemedStyle<ViewStyle> = () => ({ width: "33.33%", alignItems: "center" })
+const $verticalDivider: ThemedStyle<ViewStyle> = () => ({ position: 'absolute', right: 0, height: '60%', width: 1, backgroundColor: "#D1D1D6" })
+const $dataLabel: ThemedStyle<TextStyle> = () => ({ color: "#8E8E93", fontSize: 10, fontWeight: "600" })
+const $dataValue: ThemedStyle<TextStyle> = () => ({ fontSize: 18, fontWeight: "700", marginTop: 2 })
 
-const $disclaimer: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
-  color: colors.textDim,
-  marginTop: spacing.sm,
-})
-
-const $ctaTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginBottom: spacing.xs,
-})
-
-const $ctaSubtitle: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
-  color: colors.textDim,
-  marginBottom: spacing.sm,
-})
-
-const $ctaButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginTop: spacing.sm,
-})
-
-const $grid: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+// Disclaimer Styles
+const $disclaimerBox: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flexDirection: "row",
-  flexWrap: "wrap",
-  marginHorizontal: -spacing.xs,
+  alignItems: "flex-start",
+  gap: spacing.xs,
+  marginTop: spacing.md,
 })
 
-const $serviceTile: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  width: "33.3333%",
-  paddingHorizontal: spacing.xs,
-  marginBottom: spacing.md,
-  alignItems: "center",
-})
-
-const $serviceIconWrap: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
-  width: 44,
-  height: 44,
-  borderRadius: 22,
-  alignItems: "center",
-  justifyContent: "center",
-  borderWidth: 1,
-  borderColor: colors.border,
-  marginBottom: spacing.xs,
-})
-
-const $serviceLabel: ThemedStyle<TextStyle> = ({ colors }) => ({
-  textAlign: "center",
-  color: colors.text,
-})
-
-const $skeletonRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: spacing.md,
-  paddingVertical: spacing.xs,
-})
-
-const $skeletonBlock: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  height: 14,
-  borderRadius: 4,
-  backgroundColor: colors.border,
-  width: "50%",
-  opacity: 0.6,
-})
-
-const $errorText: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.text,
-})
-
-const $mutedText: ThemedStyle<TextStyle> = ({ colors }) => ({
+const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.textDim,
+  flex: 1,
+  lineHeight: 14,
 })
 
+const $lastUpdatedText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, fontSize: 10 })
+const $headerLinkText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint, textDecorationLine: "underline" })
+const $headerLinkWrap: ViewStyle = { paddingHorizontal: 4 }
+const $grid: ViewStyle = { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }
+const $serviceTile: ViewStyle = { width: "33.3333%", paddingHorizontal: 4, marginBottom: 16, alignItems: "center" }
+const $serviceIconWrap: ThemedStyle<ViewStyle> = ({ colors }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, marginBottom: 4 })
+const $serviceLabel: TextStyle = { textAlign: "center" }
+const $skeletonRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8 }
+const $skeletonBlock: ThemedStyle<ViewStyle> = ({ colors }) => ({ height: 14, borderRadius: 4, backgroundColor: colors.border, width: "50%", opacity: 0.6 })
+const $errorText: TextStyle = { textAlign: 'center' }
+const $mutedText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 const $spacerBottom: ViewStyle = { height: 16 }

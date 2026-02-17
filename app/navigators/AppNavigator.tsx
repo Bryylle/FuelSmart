@@ -20,6 +20,7 @@ import { CalculatorScreen } from "@/screens/CalculatorScreen"
 import { TermsAndConditionsScreen } from "@/screens/TermsAndConditionsScreen"
 import { PrivacyPolicyScreen } from "@/screens/PrivacyPolicyScreen"
 import { AccountSettingsScreen } from "@/screens/AccountSettings"
+import { UpdateOilPriceForecastScreen } from "@/screens/UpdateOilPriceForecastScreen"
 // import { UpdateAccountDetailsScreen } from "@/screens/UpdateAccountDetailsScreen"
 
 /**
@@ -56,6 +57,7 @@ const AppStack = () => {
           <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
           <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
           <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+          <Stack.Screen name="UpdateOilPriceForecast" component={UpdateOilPriceForecastScreen} />
   
         </>
       ) : (

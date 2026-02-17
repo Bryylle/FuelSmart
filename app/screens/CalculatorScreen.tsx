@@ -198,7 +198,7 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
   ), [distanceKm, fuelPrice, kmPerLiter, focused, hasSubmitted, isLoading, themed])
 
   return (
-    <Screen safeAreaEdges={["top"]} contentContainerStyle={$styles.flex1}>
+    <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
       <Header
         title="Trip cost calculator"
         safeAreaEdges={["top"]} 
@@ -246,8 +246,13 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
                     <Text style={themed($resultValue)}>₱ {formatNumber(tripCost, 2)}</Text>
                   </View>
                   <Text style={themed($note)}>
-                    Estimates assume constant speed and no traffic or load variations.
+                    
                   </Text>
+                  {/* Styled Disclaimer Box */}
+                  <View style={themed($disclaimerBox)}>
+                    <Icon icon="information" size={14} color={colors.textDim} />
+                    <Text size="xxs" style={themed($disclaimerText)}>Estimates assume constant speed and no traffic or load variations.</Text>
+                  </View>
                 </View>
               }
             />
@@ -257,6 +262,18 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     </Screen>
   )
 }
+const $disclaimerBox: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "flex-start",
+  gap: spacing.xs,
+})
+
+const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.textDim,
+  flex: 1,
+  lineHeight: 14,
+})
+const $screenContainer: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
 const $headerStyle: ThemedStyle<ViewStyle> = () => ({
   backgroundColor: "#1737ba",
 })
