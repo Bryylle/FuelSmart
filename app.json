@@ -9,7 +9,7 @@
   "updates": {
     "fallbackToCacheTimeout": 0
   },
-  "newArchEnabled": true,
+  "newArchEnabled": false,
   "jsEngine": "hermes",
   "assetBundlePatterns": [
     "**/*"
@@ -17,6 +17,11 @@
   "android": {
     "icon": "./assets/images/app-icon-android-legacy.png",
     "package": "com.fuel",
+    "config": {
+      "googleMaps": {
+        "apiKey": "AIzaSyDgrMfBN4_iFe4pmSLjZEWdf3OEhzrrqmQ"
+      }
+    },
     "adaptiveIcon": {
       "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
       "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
