@@ -188,7 +188,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   const onRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion)
     debouncedFetch(newRegion)
-    if (isAddMode) {
+    if (isAddMarkerMode) {
       setTempMarker(newRegion) 
     }
   }
@@ -314,7 +314,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   }
 
   const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 })
-  const [isAddMode, setIsAddMode] = useState(false)
+  const [isAddMarkerMode, setisAddMarkerMode] = useState(false)
   const [pendingStations, setPendingStations] = useState<any[]>([])
   const [tempMarker, setTempMarker] = useState(region)
   const fetchPendingStations = useCallback(async () => {
@@ -375,9 +375,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       )}
     </View>
   )
-  const toggleAddMode = async () => {
-    if (isAddMode) {
-      setIsAddMode(false)
+  const toggleAddMarkerMode = async () => {
+    if (isAddMarkerMode) {
+      setisAddMarkerMode(false)
       return
     }
 
@@ -407,7 +407,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       return
     }
     setTempMarker(region) 
-    setIsAddMode(true)
+    setisAddMarkerMode(true)
   }
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -463,7 +463,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     } else {
       Alert.alert("Success", "Report submitted for verification.")
       setReportModalVisible(false)
-      setIsAddMode(false)
+      setisAddMarkerMode(false)
       await fetchPendingStations()
       setReportData({
         brand: "", city: "", 
@@ -518,7 +518,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
               text: "Yes, Correct it", 
               onPress: async () => {
                 if (!selectedStation) return;
-                const eligible = await toggleAddMode()
+                const eligible = await toggleAddMarkerMode()
                 setTempMarker({ 
                   ...region, 
                   latitude: Number(selectedStation.latitude), 
@@ -535,17 +535,44 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     fetchPendingStations()
     setIsVoting(false)
   }
+  const handleCancelMyReport = async (reportId: string) => {
+    if (!reportId) {
+      Alert.alert("Error", "Report ID is missing.");
+      return;
+    }
+    Alert.alert(
+      "Cancel Report",
+      "Are you sure you want to remove this pending station report?",
+      [
+        { text: "No", style: "cancel" },
+        { 
+          text: "Yes, Cancel It", 
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase
+              .from('user_reported_locations')
+              .delete()
+              .eq('id', reportId)
 
-// fsd
-// Inside MapScreen component
-const [activeFuelType, setActiveFuelType] = useState<string | null>(null)
-const [activeFuelSubType, setActiveFuelSubType] = useState<string | null>(null)
+            if (error) {
+              Alert.alert("Error", "Could not cancel report: " + error.message)
+            } else {
+              Alert.alert("Success", "Your report has been withdrawn.")
+              setSelectedStation(null) // Close the modal
+              fetchPendingStations()    // Refresh the orange markers
+            }
+          } 
+        }
+      ]
+    )
+  }
 
-const [tempFuelType, setTempFuelType] = useState<string | null>(null)
-const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
-  
 
 
+  const [activeFuelType, setActiveFuelType] = useState<string | null>(null)
+  const [activeFuelSubType, setActiveFuelSubType] = useState<string | null>(null)
+  const [tempFuelType, setTempFuelType] = useState<string | null>(null)
+  const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
   const [isBrandPickerVisible, setIsBrandPickerVisible] = useState(false)
   const [activeBrands, setActiveBrands] = useState<string[]>([])
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
@@ -707,7 +734,7 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
           provider={PROVIDER_GOOGLE}
           style={{ flex: 1 }}
           onRegionChangeComplete={onRegionChangeComplete}
-          showsUserLocation={true}
+          showsUserLocation={!isAddMarkerMode}
           mapPadding={{top: 110, left: 0, right:0, bottom: 0}}
           toolbarEnabled={false}
           initialRegion={region}
@@ -717,14 +744,14 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
             <>
               {region.latitudeDelta < ZOOM_THRESHOLD && (
                 <StationMarkers 
-                  stations={filteredStations} // Use the memoized filtered list
+                  stations={filteredStations}
                   activeFuelSubType={activeFuelSubType}
                   onMarkerPress={handleMarkerPress}
                 />
               )}
               {pendingStations.map((ps) => (
                 <Marker 
-                  key={`pending-marker-${ps.id}`} // Unique key prevents "ghosting"
+                  key={`pending-marker-${ps.id}`}
                   coordinate={{ latitude: Number(ps.latitude), longitude: Number(ps.longitude) }}
                   pinColor="orange"
                   onPress={() => setSelectedStation({ ...ps, isPending: true })} 
@@ -736,128 +763,125 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       </View>
       {/* --MAPVIEW */}
       {/* --SEARCH BAR */}
-      <View style={$searchContainer}>
-        <View style={$searchBar}>
-          <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
-            <Icon icon="search" color={"##1737ba"} size={24} />
-            <Text style={$searchPlaceholder} numberOfLines={1}>
-              {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance}km radius
-            </Text>
-            {hasFilterApplied && (
-              <PressableIcon icon="close" size={24} onPress={handleClearAll}/>
-            )}
-          </Pressable>
-        </View>
-            {/* fsd */}
-        {isFilterVisible && (
-          <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={$filterDropdown}>
-            <>
-              <Text weight="bold" size="xs">Step 1: Select Fuel Category</Text>
-              <View style={$segmentedControl}>
-                {([null, "gas", "diesel"] as const).map((type) => (
-                  <TouchableOpacity 
-                    key={type ?? "none"} 
-                    style={[$segment, tempFuelType === type && $segmentActive]} 
-                    onPress={() => {
-                      setTempFuelType(type)
-                      if (!type) {
-                        setTempFuelSubType(null)
-                        setTempMaxPrice("")
-                      } else {
-                        setTempFuelSubType(type === 'gas' ? 'regular_gas' : 'regular_diesel')
-                      }
-                    }}
-                  >
-                    <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>
-                      {type === "gas" ? "Gasoline" : type === "diesel" ? "Diesel" : "None"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {tempFuelType && (
-                <Animated.View entering={FadeInUp} style={{ marginTop: 15 }}>
-                  <Text weight="bold" size="xs">Step 2: Specific Type</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {(tempFuelType === "gas" 
-                        ? ["regular_gas", "premium_gas", "sports_gas"] 
-                        : ["regular_diesel", "premium_diesel"]
-                      ).map((sub) => (
-                        <TouchableOpacity 
-                          key={sub} 
-                          style={[$segment, tempFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]} 
-                          onPress={() => setTempFuelSubType(sub)}
-                        >
-                          <Text style={[$segmentText, tempFuelSubType === sub && $segmentTextActive, { fontSize: 10 }]}>
-                            {sub.split('_')[0].toUpperCase()}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-
-                  <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Step 3: Max Price (Optional)</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
-                    <TextInput
-                      style={$priceInput}
-                      value={tempMaxPrice}
-                      onChangeText={setTempMaxPrice}
-                      placeholder="No Limit"
-                      keyboardType="numeric"
-                      placeholderTextColor="#C7C7CC"
-                    />
-                    <Text size="xxs" style={{ opacity: 0.6 }}>Per Liter</Text>
-                  </View>
-                </Animated.View>
+      {!isAddMarkerMode && (
+        <View style={$searchContainer}>
+          <View style={$searchBar}>
+            <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
+              <Icon icon="search" color={"##1737ba"} size={24} />
+              <Text style={$searchPlaceholder} numberOfLines={1}>
+                {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance}km radius
+              </Text>
+              {hasFilterApplied && (
+                <PressableIcon icon="close" size={24} onPress={handleClearAll}/>
               )}
-            </>
-            <>
-              <View style={{ marginTop: 15 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text weight="bold" size="xs">Distance Radius</Text>
-                  <Text weight="bold" size="xs" style={{ color: colors.palette.primary500 }}>
-                    {tempDistance} km
-                  </Text>
+            </Pressable>
+          </View>
+              {/* fsd */}
+          {isFilterVisible && (
+            <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={$filterDropdown}>
+              <>
+                <Text weight="bold" size="xs">Fuel Type</Text>
+                <View style={$segmentedControl}>
+                  {([null, "gas", "diesel"] as const).map((type) => (
+                    <TouchableOpacity 
+                      key={type ?? "none"} 
+                      style={[$segment, tempFuelType === type && $segmentActive]} 
+                      onPress={() => {
+                        setTempFuelType(type)
+                        if (!type) {
+                          setTempFuelSubType(null)
+                          setTempMaxPrice("")
+                        } else {
+                          setTempFuelSubType(type === 'gas' ? 'regular_gas' : 'regular_diesel')
+                        }
+                      }}
+                    >
+                      <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>
+                        {type === "gas" ? "Gasoline" : type === "diesel" ? "Diesel" : "None"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                
-                <Slider
-                  style={{ width: '100%', height: 40 }}
-                  minimumValue={1}
-                  maximumValue={120}
-                  step={1}
-                  value={tempDistance || 120}
-                  onValueChange={(val: number) => setTempDistance(val)}
-                  minimumTrackTintColor={colors.palette.primary500}
-                  maximumTrackTintColor="#D1D1D6"
-                  thumbTintColor={colors.palette.primary500}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -8 }}>
-                  <Text size="xxs" style={{ color: '#8E8E93' }}>1km</Text>
-                  <Text size="xxs" style={{ color: '#8E8E93' }}>120km</Text>
+
+                {tempFuelType && (
+                  <Animated.View entering={FadeInUp} style={{ marginTop: 15 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {(tempFuelType === "gas" 
+                          ? ["regular_gas", "premium_gas", "sports_gas"] 
+                          : ["regular_diesel", "premium_diesel"]
+                        ).map((sub) => (
+                          <TouchableOpacity 
+                            key={sub} 
+                            style={[$segment, tempFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]} 
+                            onPress={() => setTempFuelSubType(sub)}
+                          >
+                            <Text style={[$segmentText, tempFuelSubType === sub && $segmentTextActive, { fontSize: 10 }]}>
+                              {sub.split('_')[0].toUpperCase()}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Max Price (Optional)</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                      <TextInput
+                        style={$priceInput}
+                        value={tempMaxPrice}
+                        onChangeText={setTempMaxPrice}
+                        placeholder="e.g. 50.00"
+                        keyboardType="numeric"
+                        placeholderTextColor="#C7C7CC"
+                      />
+                      <Text size="xxs" style={{ opacity: 0.6 }}>Per Liter</Text>
+                    </View>
+                  </Animated.View>
+                )}
+              </>
+              <>
+                <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brand</Text>
+                <TouchableOpacity style={$brandPickerTrigger} onPress={() => { setTempBrands([...activeBrands]); setIsBrandPickerVisible(true); }}>
+                  <Text size="sm" numberOfLines={1}>{tempBrands.length === 0 ? "All Brands" : tempBrands.join(", ")}</Text>
+                  <Icon icon="caretRight" size={20} />
+                </TouchableOpacity>
+              </>
+              <>
+                <View style={{ marginTop: 15 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text weight="bold" size="xs">Distance Radius</Text>
+                    <Text weight="bold" size="xs" style={{ color: colors.palette.primary500 }}>
+                      {tempDistance} km
+                    </Text>
+                  </View>
+                  
+                  <Slider
+                    style={{ width: '100%', height: 40 }}
+                    minimumValue={1}
+                    maximumValue={120}
+                    step={1}
+                    value={tempDistance || 120}
+                    onValueChange={(val: number) => setTempDistance(val)}
+                    minimumTrackTintColor={colors.palette.primary500}
+                    maximumTrackTintColor="#D1D1D6"
+                    thumbTintColor={colors.palette.primary500}
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -8 }}>
+                    <Text size="xxs" style={{ color: '#8E8E93' }}>1km</Text>
+                    <Text size="xxs" style={{ color: '#8E8E93' }}>120km</Text>
+                  </View>
                 </View>
-              </View>
-            </>
-            <>
-              <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brands</Text>
-              <TouchableOpacity style={$brandPickerTrigger} onPress={() => { setTempBrands([...activeBrands]); setIsBrandPickerVisible(true); }}>
-                <Text size="sm" numberOfLines={1}>{tempBrands.length === 0 ? "All Brands" : tempBrands.join(", ")}</Text>
-                <Icon icon="caretRight" size={14} />
-              </TouchableOpacity>
-            </>
-            <>
-              <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Max Price (₱)</Text>
-              <TextInput style={$filterInput} keyboardType="numeric" placeholder="e.g. 65.00" value={tempMaxPrice} onChangeText={setTempMaxPrice} />
-            </>
-            <>
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
-              </View>
-            </>
-          </Animated.View>
-        )}
-      </View>
+              </>
+              <>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                  <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
+                </View>
+              </>
+            </Animated.View>
+          )}
+        </View>
+      )}
       {/* --SEARCH BAR */}
       {/* --SEARCH BAR BRAND PICKER MODAL */}
       <Modal visible={isBrandPickerVisible} transparent animationType="fade" onRequestClose={() => setIsBrandPickerVisible(false)}>
@@ -949,8 +973,26 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
                       </View>
                       
                       {loggedInUser?.id === selectedStation.reporter_id ? (
-                        <View style={{ marginTop: 20, alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12 }}>
-                          <Text text="Waiting for others to verify your report..." size="xxs" style={{ opacity: 0.5 }} />
+                        <View style={{ marginTop: 20, gap: 10 }}>
+                          <View style={{ alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12 }}>
+                            <Text text="Waiting for others to verify your report..." size="xxs" style={{ opacity: 0.5 }} />
+                          </View>
+                          <TouchableOpacity 
+                            style={[$modalBtn, { 
+                              backgroundColor: colors.palette.angry500, 
+                              flexDirection: 'row', 
+                              justifyContent: 'center', // Centers the text horizontally
+                              alignItems: 'center',     // Centers the text vertically
+                              gap: 8,
+                              minHeight: 45             // Ensures the button is tall enough to see the text
+                            }]} 
+                            onPress={() => handleCancelMyReport(selectedStation.id)}
+                          >
+                            <Text 
+                              text="Cancel My Report" 
+                              style={{ color: '#FFFFFF', fontWeight: 'bold' }} // Using hex for certainty
+                            />
+                          </TouchableOpacity>
                         </View>
                       ) : (
                         <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
@@ -1132,28 +1174,30 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       </Modal>
       {/* --CONTRIBUTOR MODAL */}
       {/* --ADD STATION BUTTON */}
-      {region.latitudeDelta < ZOOM_THRESHOLD && (
+      {region.latitudeDelta < ZOOM_THRESHOLD && !isAddMarkerMode && (
         <TouchableOpacity 
-          style={[$utilityBtn, { bottom: 120, backgroundColor: isAddMode ? colors.palette.angry500 : "#1737ba" }]} 
-          onPress={toggleAddMode}
+          style={[$utilityBtn, { bottom: 120, backgroundColor: isAddMarkerMode ? colors.palette.angry500 : "#1737ba" }]} 
+          onPress={toggleAddMarkerMode}
         >
-          <Icon icon={isAddMode ? "close" : "add_marker"} color="white" size={24} />
+          <Icon icon={isAddMarkerMode ? "close" : "add_marker"} color="white" size={24} />
         </TouchableOpacity>
       )}
       {/* --ADD STATION BUTTON */}
       {/* --ADD STATION CROSSHAIR */}
-      {isAddMode && (
+      {isAddMarkerMode && (
         <Animated.View entering={FadeInUp} style={$placementBar}>
           <Text text="Center the station on the crosshair" style={{ color: 'white', marginBottom: 8 }} />
-          <TouchableOpacity 
-            style={$confirmBtn} 
-            onPress={() => setReportModalVisible(true)}
-          >
-            <Text text="Set Location" style={{ color: 'white', fontWeight: 'bold' }} />
-          </TouchableOpacity>
+          <View style={{flex: 1, flexDirection: "row", padding: 10, justifyContent: "space-between", width: "90%", alignItems: "center"}}>
+            <TouchableOpacity style={$confirmBtn} onPress={() => toggleAddMarkerMode()}>
+              <Text text="Cancel" style={{ color: 'white', fontWeight: 'bold' }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={$confirmBtn} onPress={() => setReportModalVisible(true)}>
+              <Text text="Set Location" style={{ color: 'white', fontWeight: 'bold' }} />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       )}
-      {isAddMode && (
+      {isAddMarkerMode && (
         <View 
           style={[
             $crosshairContainer, 
@@ -1214,7 +1258,7 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       </Modal>
       {/* a STATION FORM MODAL */}
       {/* --RESET VIEW */}
-      {isNotAtMarkerLevel && (
+      {isNotAtMarkerLevel && !isAddMarkerMode && (
         <TouchableOpacity 
           style={[$utilityBtn, {bottom : 50}]} 
           onPress={zoomToMarkerVisibleLevel}
@@ -1225,7 +1269,7 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       )}
       {/* --RESET VIEW */}
       {/* --3D MAP VIEW BUTTON*/}
-      {region.latitudeDelta < ZOOM_THRESHOLD && /* TODO: Need to add AND isMapMounted  */ (
+      {region.latitudeDelta < ZOOM_THRESHOLD && !isAddMarkerMode && /* TODO: Need to add AND isMapMounted  */ (
         <TouchableOpacity style={[$utilityBtn, { bottom: 190 }]} onPress={toggle3DMapView}>
           <Icon icon="layers" color="white" size={24} />
         </TouchableOpacity>
@@ -1533,25 +1577,25 @@ const $crosshairDot: ViewStyle = {
   backgroundColor: "red",
   position: "absolute",
 }
-
-
 const $placementBar: ViewStyle = {
   position: 'absolute',
-  top: 160, 
-  left: 20,
-  right: 20,
+  bottom: 70,
+  left: 10,
+  right: 10,
   backgroundColor: 'rgba(0,0,0,0.85)',
-  padding: 16,
+  padding: 10,
   borderRadius: 15,
   alignItems: 'center',
   zIndex: 100,
 }
-
 const $confirmBtn: ViewStyle = {
   backgroundColor: colors.palette.primary500,
   paddingHorizontal: 24,
   paddingVertical: 12,
   borderRadius: 25,
+  width: 150,
+  alignItems: "center",
+  justifyContent: "center"
 }
 const $miniInput: TextStyle = {
   backgroundColor: "#F2F2F7",
@@ -1673,8 +1717,8 @@ const $feedbackBtn: ViewStyle = { flex: 1, paddingVertical: 12, alignItems: 'cen
 const $verticalDividerFeedback: ViewStyle = { width: 1, height: 40, backgroundColor: '#EEE' }
 
 const $modalOverlay: ViewStyle = { flex: 1, justifyContent: "flex-end" }
-const $detailCard: ViewStyle = { backgroundColor: "white", borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 5, height: 350 }
-const $dismissHandle: ViewStyle = { alignItems: 'center', paddingVertical: 5, backgroundColor: '#605e5e' }
+const $detailCard: ViewStyle = { backgroundColor: "white", height: 350 }
+const $dismissHandle: ViewStyle = { borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', paddingVertical: 5, backgroundColor: '#605e5e' }
 const $innerContent: ViewStyle = { paddingHorizontal: 20, paddingTop: 12 }
 const $favoriteBtn: ViewStyle = { padding: 8 }
 const $priceDashboard: ViewStyle = { backgroundColor: "#F2F2F7", borderRadius: 16, marginTop: 10, height: 160, borderWidth: 1, borderColor: "#E5E5EA" }
