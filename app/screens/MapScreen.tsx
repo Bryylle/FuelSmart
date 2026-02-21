@@ -1,5 +1,5 @@
 import { FC, useMemo, useState, useRef, useEffect, useCallback } from "react"
-import { Platform, Pressable, View, ViewStyle, TextStyle, Image, ImageStyle, ScrollView, TouchableOpacity, PixelRatio, Linking, Modal, Alert, KeyboardAvoidingView, TextInput, StyleSheet, } from "react-native"
+import { ActivityIndicator, Platform, Pressable, View, ViewStyle, TextStyle, Image, ImageStyle, ScrollView, TouchableOpacity, PixelRatio, Linking, Modal, Alert, KeyboardAvoidingView, TextInput, StyleSheet, } from "react-native"
 import * as Clipboard from "expo-clipboard"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
@@ -60,6 +60,7 @@ interface Station {
   is_verified: boolean;
   isPending?: boolean;  
   last_updated_by?: Contributor;
+  isLoading?: boolean;
   [key: string]: any;
 }
 
@@ -155,7 +156,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
       const { data } = await supabase
         .from("fuel_stations")
-        .select(`id, brand, latitude, longitude`)
+        .select(`id, brand, latitude, longitude, regular_gas, premium_gas, sports_gas, regular_diesel, premium_diesel`)
         .gte("latitude", minLat)
         .lte("latitude", maxLat)
         .gte("longitude", minLng)
@@ -183,22 +184,29 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const handleMarkerPress = async (stationId: string) => {
+    const localStation = stations.find(s => s.id === stationId)
+    
+    if (localStation) {
+      setSelectedStation({ ...localStation, isLoading: true })
+    }
+
     try {
       const { data, error } = await supabase
         .from("fuel_stations")
-        .select(`*, contributor:users!last_updated_by (id, full_name, b_show_name)`)
+        .select(`*, last_updated_by_profile:users!last_updated_by (id, full_name, b_show_name)`)
         .eq("id", stationId)
         .single()
 
       if (error) throw error
-      const stationWithUser = {
+
+      setSelectedStation({
         ...data,
-        last_updated_by: data.contributor 
-      }
-      setSelectedStation(stationWithUser as unknown as Station)
+        last_updated_by: data.last_updated_by_profile,
+        isLoading: false 
+      })
     } catch (e) {
-      setSelectedStation(null)
-      console.error("Fetch Error:", e) 
+      console.error("Fetch Error:", e)
+      setSelectedStation(prev => prev ? { ...prev, isLoading: false } : null)
     }
   }
 
@@ -535,9 +543,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     return stations.filter((s) => {
       if (activeBrands.length > 0 && !activeBrands.includes(s.brand)) return false
       
-      const price = activeFuelType === "gas" ? (s.regular_gas || 0) : (s.regular_diesel || 0)
       const limit = parseFloat(activeMaxPrice)
-      if (!isNaN(limit) && limit > 0 && (price === 0 || price > limit)) return false
+      if (!isNaN(limit) && limit > 0) {
+        const price = activeFuelType === "gas" ? (s.regular_gas || 0) : (s.regular_diesel || 0)
+        if (price === 0 || price > limit) return false
+      }
 
       if (activeDistance && userLocation) {
         const dist = getDistance(userLocation.latitude, userLocation.longitude, s.latitude, s.longitude)
@@ -655,8 +665,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
           initialRegion={region}
           customMapStyle={MAP_STYLE}
         >
-          {filteredStations?.length > 0 ? (
-            region.latitudeDelta < ZOOM_THRESHOLD && (
+          {/* {filteredStations?.length > 0 ? ( */}
+          {region.latitudeDelta < ZOOM_THRESHOLD && (
             <>
               {filteredStations.map((s) => (
                 <Marker
@@ -676,28 +686,6 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                 />
               ))}
             </>
-          )) : (
-            region.latitudeDelta < ZOOM_THRESHOLD && (
-              <>
-                {stations.map((s) => (
-                  <Marker
-                    key={s.id}
-                    coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
-                    onPress={() => handleMarkerPress(s.id)}
-                    tracksViewChanges={false}
-                    image={FUEL_MARKER}
-                  />
-                ))}
-                {pendingStations.map((ps) => (
-                  <Marker 
-                    key={`pending-${ps.id}`} 
-                    coordinate={{ latitude: Number(ps.latitude), longitude: Number(ps.longitude) }}
-                    pinColor="orange"
-                    onPress={() => setSelectedStation({ ...ps, isPending: true })} 
-                  />
-                ))}
-              </>
-            )
           )}
         </MapView>
       </View>
@@ -875,43 +863,50 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                     </View>
                   ) : (
                     <View style={themed($priceDashboard)}>
-                      <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
-                        <View style={$priceGridContainer}>
-                          {(() => {
-                            // Use the map to get specific labels for this brand, fallback to Default
-                            const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
-                            
-                            return Object.keys(config).map((key, index) => {
-                              // If the brand config has a null/empty label for this key, hide it
-                              if (!config[key]) return null;
-
-                              return (
-                                <View key={key} style={$dataEntry}>
-                                  <Text style={$dataLabel}>{config[key]}</Text>
-                                  
-                                  {/* Toggle between Input for Reporting and Text for viewing */}
-                                  {isReporting ? (
-                                    <TextInput 
-                                      style={$priceInput} 
-                                      keyboardType="decimal-pad" 
-                                      value={reportPrices[key] || ""} 
-                                      onChangeText={(val) => setReportPrices(prev => ({ ...prev, [key]: val }))} 
-                                      placeholder="0.00" 
-                                    />
-                                  ) : ( 
-                                    <Text style={$dataValue}>
-                                      ₱{(Number(selectedStation[key]) || 0).toFixed(2)}
-                                    </Text> 
-                                  )}
-                                  
-                                  {/* Only show vertical divider if it's not the 3rd column */}
-                                  {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
-                                </View>
-                              )
-                            })
-                          })()}
+                      {selectedStation.isLoading ? (
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                          <ActivityIndicator size="large" color={colors.palette.primary500} />
+                          <Text size="xxs" style={{ marginTop: 8, opacity: 0.5 }}>Fetching latest prices...</Text>
                         </View>
-                      </ScrollView>
+                      ) : (
+                        <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
+                          <View style={$priceGridContainer}>
+                            {(() => {
+                              // Use the map to get specific labels for this brand, fallback to Default
+                              const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
+                              
+                              return Object.keys(config).map((key, index) => {
+                                // If the brand config has a null/empty label for this key, hide it
+                                if (!config[key]) return null;
+
+                                return (
+                                  <View key={key} style={$dataEntry}>
+                                    <Text style={$dataLabel}>{config[key]}</Text>
+                                    
+                                    {/* Toggle between Input for Reporting and Text for viewing */}
+                                    {isReporting ? (
+                                      <TextInput 
+                                        style={$priceInput} 
+                                        keyboardType="decimal-pad" 
+                                        value={reportPrices[key] || ""} 
+                                        onChangeText={(val) => setReportPrices(prev => ({ ...prev, [key]: val }))} 
+                                        placeholder="0.00" 
+                                      />
+                                    ) : ( 
+                                      <Text style={$dataValue}>
+                                        ₱{(Number(selectedStation[key]) || 0).toFixed(2)}
+                                      </Text> 
+                                    )}
+                                    
+                                    {/* Only show vertical divider if it's not the 3rd column */}
+                                    {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
+                                  </View>
+                                )
+                              })
+                            })()}
+                          </View>
+                        </ScrollView>
+                      )}
                     </View>
                   )}
                 </View>
