@@ -649,23 +649,31 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
   }
 
   const isAnimating = useRef(false)
-  const [is3D, setIs3D] = useState(false);
+  const is3D = useRef(false)
   const toggle3DMapView = async () => {
-    if (!mapRef.current) return
-
+    // Prevent overlapping animations
+    if (!mapRef.current || isAnimating.current) return
     isAnimating.current = true
-    const currentCamera = await mapRef.current.getCamera()
-    const is3D = currentCamera.pitch > 0
-    setIs3D(is3D)
 
+    // 1. Determine the next state based on the ref
+    const nextPitch = is3D.current ? 0 : 55
+    const nextZoom = is3D.current ? 15 : 17
+
+    // 2. Animate the Native Map (No re-render triggered)
     mapRef.current.animateCamera({
-      center: { latitude: region.latitude, longitude: region.longitude,},
-      heading: currentCamera.heading,
-      pitch: is3D ? 0 : 55,      
-      zoom: is3D ? 15 : 17,       
+      center: { 
+        latitude: region.latitude, 
+        longitude: region.longitude 
+      },
+      pitch: nextPitch,      
+      zoom: nextZoom,       
     }, { duration: 600 })
 
-    setTimeout(() => { isAnimating.current = false }, 650)
+    // 3. Update the ref and unlock the animation guard after completion
+    setTimeout(() => {
+      is3D.current = !is3D.current
+      isAnimating.current = false
+    }, 650)
   }
 
   
@@ -731,7 +739,7 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       <View style={$searchContainer}>
         <View style={$searchBar}>
           <Pressable style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => setIsFilterVisible(!isFilterVisible)}>
-            <Icon icon="search" color={colors.palette.primary500} size={24} />
+            <Icon icon="search" color={"##1737ba"} size={24} />
             <Text style={$searchPlaceholder} numberOfLines={1}>
               {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance}km radius
             </Text>
@@ -1126,10 +1134,10 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
       {/* --ADD STATION BUTTON */}
       {region.latitudeDelta < ZOOM_THRESHOLD && (
         <TouchableOpacity 
-          style={[$fab, { backgroundColor: isAddMode ? colors.palette.angry500 : colors.palette.primary500 }]} 
+          style={[$utilityBtn, { bottom: 120, backgroundColor: isAddMode ? colors.palette.angry500 : "#1737ba" }]} 
           onPress={toggleAddMode}
         >
-          <Icon icon={isAddMode ? "close" : "close"} color="white" size={30} />
+          <Icon icon={isAddMode ? "close" : "add_marker"} color="white" size={24} />
         </TouchableOpacity>
       )}
       {/* --ADD STATION BUTTON */}
@@ -1204,27 +1212,39 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
           </View>
         </View>
       </Modal>
-      {/* --ADD STATION FORM MODAL */}
+      {/* a STATION FORM MODAL */}
       {/* --RESET VIEW */}
       {isNotAtMarkerLevel && (
-        <View style={$markerLevelButtonWrapper}>
-          <TouchableOpacity 
-            style={$markerLevelPill} 
-            onPress={zoomToMarkerVisibleLevel}
-            activeOpacity={0.9}
-          >
-            <Text style={$pillText}>Reset View</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      {/* --RESET VIEW */}
-      {/* --3D MAP VIEW */}
-      {region.latitudeDelta < ZOOM_THRESHOLD && /* TODO: Need to add AND isMapMounted  */ (
-        <TouchableOpacity style={[$utilityBtn, { bottom: 190 }]} onPress={toggle3DMapView}>
-          <Text style={$pillText} text={is3D ? "3D" : "2D"}/>
+        <TouchableOpacity 
+          style={[$utilityBtn, {bottom : 50}]} 
+          onPress={zoomToMarkerVisibleLevel}
+          activeOpacity={0.9}
+        >
+          <Icon icon="reset_focus" color="white" size={24} />
         </TouchableOpacity>
       )}
-      {/* --3D MAP VIEW */}
+      {/* --RESET VIEW */}
+      {/* --3D MAP VIEW BUTTON*/}
+      {region.latitudeDelta < ZOOM_THRESHOLD && /* TODO: Need to add AND isMapMounted  */ (
+        <TouchableOpacity style={[$utilityBtn, { bottom: 190 }]} onPress={toggle3DMapView}>
+          <Icon icon="layers" color="white" size={24} />
+        </TouchableOpacity>
+      )}
+      {/* --3D MAP VIEW BUTTON*/}
+      {/* --ATTRIBUTION AREA */}
+      <View style={$attributionContainer}>
+        <View style={{ flex: 1 }} /> 
+        <TouchableOpacity 
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL("https://www.openstreetmap.org/copyright")}
+          style={$attributionBackground}
+        >
+          <Text style={$attributionText}>
+            © <Text style={$linkText}>OpenStreetMap</Text> contributors
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {/* --ATTRIBUTION AREA */}
     </Screen>
   )
 }
@@ -1451,11 +1471,25 @@ const $modalBtns: ViewStyle = {
 }
 const $utilityBtn: ViewStyle = {
   position: 'absolute',
-  right: 20,
+  right: 10,
   width: 50,
   height: 50,
   borderRadius: 25,
   backgroundColor: "#1737ba", 
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 5,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  zIndex: Z_INDEX_HELPER_BUTTONS,
+}
+const $fab: ViewStyle = {
+  position: 'absolute',
+  bottom: 120, 
+  right: 20,
+  borderRadius: 30,
   justifyContent: 'center',
   alignItems: 'center',
   elevation: 5,
@@ -1499,22 +1533,7 @@ const $crosshairDot: ViewStyle = {
   backgroundColor: "red",
   position: "absolute",
 }
-const $fab: ViewStyle = {
-  position: 'absolute',
-  bottom: 120, 
-  right: 20,
-  width: 60,
-  height: 60,
-  borderRadius: 30,
-  justifyContent: 'center',
-  alignItems: 'center',
-  elevation: 5,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.25,
-  shadowRadius: 3.84,
-  zIndex: 99,
-}
+
 
 const $placementBar: ViewStyle = {
   position: 'absolute',

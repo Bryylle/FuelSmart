@@ -143,6 +143,9 @@ export const iconRegistry = {
   home: require("@assets/icons/home.png"),
   check: require("@assets/icons/check.png"),
   priceUpdate: require("@assets/icons/price_update.png"),
+  layers: require("@assets/icons/layers.png"),  
+  reset_focus: require("@assets/icons/reset_focus.png"),  
+  add_marker: require("@assets/icons/add_marker.png"),  
 }
 
 const $imageStyleBase: ImageStyle = {
