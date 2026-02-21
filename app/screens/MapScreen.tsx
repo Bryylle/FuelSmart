@@ -17,6 +17,7 @@ import { colors } from "@/theme/colorsDark"
 import { initFuelMappings, FUEL_BRAND_MAP } from "../utils/fuelMappings"
 import Slider from '@react-native-community/slider'
 import * as Location from "expo-location"
+import { useFocusEffect } from "@react-navigation/native"
 
 // CONSTANTS
 const ZOOM_THRESHOLD  = 0.05 
@@ -92,6 +93,7 @@ const FUEL_SUBTYPE_LABELS: Record<string, string> = {
   premium_diesel: "Premium"
 }
 
+
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371 
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -102,6 +104,7 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
 }
+
 
 export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   // --GENERAL
@@ -314,13 +317,24 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   const [isAddMode, setIsAddMode] = useState(false)
   const [pendingStations, setPendingStations] = useState<any[]>([])
   const [tempMarker, setTempMarker] = useState(region)
-  const fetchPending = useCallback(async () => {
+  const fetchPendingStations = useCallback(async () => {
     const { data } = await supabase.from('user_reported_locations').select('*')
     if (data) setPendingStations(data)
   }, [])
-  useEffect(() => {
-    fetchPending()
-  }, [fetchPending])
+  // Inside MapScreen component
+  useFocusEffect(
+    useCallback(() => {
+      // Refresh regular stations
+      fetchStations(region)
+      
+      // Refresh pending markers (orange ones)
+      fetchPendingStations() 
+
+      return () => {
+        // Optional cleanup
+      }
+    }, [region]) // Re-run if region changes while focused
+  )
 
   const [reportModalVisible, setReportModalVisible] = useState(false)
   const [reportData, setReportData] = useState<ReportData>({
@@ -450,7 +464,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       Alert.alert("Success", "Report submitted for verification.")
       setReportModalVisible(false)
       setIsAddMode(false)
-      await fetchPending()
+      await fetchPendingStations()
       setReportData({
         brand: "", city: "", 
         has_regular_gas: false, 
@@ -518,7 +532,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       }
     }
     setSelectedStation(null)
-    fetchPending()
+    fetchPendingStations()
     setIsVoting(false)
   }
 
@@ -691,47 +705,18 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
           initialRegion={region}
           customMapStyle={MAP_STYLE}
         >
-          {/* fsd */}
           {region.latitudeDelta < ZOOM_THRESHOLD && ( 
             <>
-              {filteredStations.map((s) => {
-                const priceValue = activeFuelSubType ? parseFloat(s[activeFuelSubType]) : 0;
-                const hasPrice = activeFuelSubType !== null && priceValue > 0;
-
-                return (
-                  <React.Fragment key={`group-${s.id}-${activeFuelSubType}`}>
-                    {/* 2. THE FLOATING PRICE OVERLAY */}
-                    {hasPrice && (
-                      <Marker
-                        key={`badge-${s.id}-${activeFuelSubType}`}
-                        coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
-                        // Anchor shifts the badge UP and to the RIGHT so it doesn't cover the pin
-                        // x: 0.5 is horizontal center, y: 1.5 pushes it up above the coordinate
-                        anchor={{ x: -0.2, y: 1.3 }} 
-                        pointerEvents="none" // Makes touches go through to the map/pin
-                        tracksViewChanges={false}
-                      >
-                        <View style={$floatingBadgePill}>
-                          <Text style={$floatingBadgeTextSmall}>
-                            {priceValue.toFixed(2)}
-                          </Text>
-                        </View>
-                      </Marker>
-                    )}
-                    {/* 1. THE STABLE NATIVE MARKER */}
-                    <Marker
-                      key={`pin-${s.id}`}
-                      coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
-                      onPress={() => handleMarkerPress(s.id)}
-                      image={FUEL_MARKER}
-                      tracksViewChanges={false}
-                    />
-                  </React.Fragment>
-                );
-              })}
+              {region.latitudeDelta < ZOOM_THRESHOLD && (
+                <StationMarkers 
+                  stations={filteredStations} // Use the memoized filtered list
+                  activeFuelSubType={activeFuelSubType}
+                  onMarkerPress={handleMarkerPress}
+                />
+              )}
               {pendingStations.map((ps) => (
                 <Marker 
-                  key={`pending-${ps.id}`} 
+                  key={`pending-marker-${ps.id}`} // Unique key prevents "ghosting"
                   coordinate={{ latitude: Number(ps.latitude), longitude: Number(ps.longitude) }}
                   pinColor="orange"
                   onPress={() => setSelectedStation({ ...ps, isPending: true })} 
@@ -1245,36 +1230,28 @@ const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
 }
 
 // REGIONS STYLES
-const $floatingBadgePill: ViewStyle = {
-  // Use a slightly wider padding for the 00.00 format
-  paddingHorizontal: 7,
-  paddingVertical: 3,
-  
-  // Vibrant background to stand out against the map
-  backgroundColor: "#FF5A5F", 
-  
-  // This high radius ensures it stays a pill even if the price grows
-  borderRadius: 20, 
-  
-  // Thick white border prevents the badge from blending into the map colors
-  borderWidth: 2,
-  borderColor: "white",
-  
-  // Center the text perfectly
-  alignItems: "center",
-  justifyContent: "center",
-  
-  // Strong shadow for "floating" depth effect
-  elevation: 5,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.3,
-  shadowRadius: 3,
-  
-  // Minimum width ensures it doesn't become a tiny circle if the price is short
-  minWidth: 42,
+const $customMarkerWrapper: ViewStyle = {
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 50, // Increase this if your badge is getting cut off
+  width: 60,
 }
 
+const $markerPinImage: ImageStyle = {
+  width: 48,
+  height: 48,
+  resizeMode: 'contain',
+}
+
+const $floatingBadgePill: ViewStyle = {
+  backgroundColor: "#000000",
+  paddingHorizontal: 4,
+  paddingVertical: 2,
+  borderRadius: 4,
+  position: 'absolute',
+  top: -5, // Lift it above the pin
+  zIndex: 2,
+}
 const $floatingBadgeTextSmall: TextStyle = {
   color: "white",
   fontSize: 11,
@@ -1395,13 +1372,6 @@ const $priceBadgeContainer: ViewStyle = {
   justifyContent: 'center',
   zIndex: 20,
 }
-const $markerContainer: ViewStyle = {
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 40,
-  height: 40,
-}
-
 const $markerImage: ImageStyle = {
   width: 32,
   height: 32,
@@ -1700,3 +1670,93 @@ const $buttonAbsoluteWrapper: ViewStyle = { position: "absolute", bottom: 0, lef
 const $buttonRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between" }
 const $directionsButton: ViewStyle = { flexDirection: "row", backgroundColor: "#605e5e", paddingVertical: 10, borderRadius: 20, width: '48%', justifyContent: "center", alignItems: 'center' }
 const $buttonText: TextStyle = { color: "white", marginLeft: 8, fontWeight: "600", fontSize: 14 }
+
+
+const StationMarkers = React.memo(({ 
+  stations, 
+  activeFuelSubType, 
+  onMarkerPress 
+}: { 
+  stations: any[], 
+  activeFuelSubType: string | null, 
+  onMarkerPress: (id: string) => void 
+}) => {
+  // This state controls whether the map is "videoing" the marker or "taking a photo"
+  const [shouldTrack, setShouldTrack] = useState(true)
+
+  useEffect(() => {
+    // 1. Every time the stations or filter changes, start "tracking" (video mode)
+    setShouldTrack(true)
+
+    // 2. Wait 600ms for the background color and price to definitely be visible
+    const timer = setTimeout(() => {
+      setShouldTrack(false) // 3. Freeze the marker (photo mode) for performance
+    }, 600)
+
+    return () => clearTimeout(timer)
+  }, [stations.length, activeFuelSubType]) // Trigger this when data or filters change
+
+  return (
+    <>
+      {stations.map((s) => {
+        const priceValue = activeFuelSubType ? parseFloat(s[activeFuelSubType]) : 0
+        const hasPrice = activeFuelSubType !== null && priceValue > 0
+        
+        // We still use a unique key to force a clean slate when filters change
+        const markerKey = `marker-${s.id}-${activeFuelSubType || "none"}`
+
+        return (
+          <Marker
+            key={markerKey}
+            coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
+            onPress={() => onMarkerPress(s.id)}
+            // Use the state here!
+            tracksViewChanges={shouldTrack}
+          >
+            <View style={$markerContainer}>
+              {hasPrice && (
+                <View style={$badgePill}>
+                  <Text style={$badgeText}>{priceValue.toFixed(2)}</Text>
+                </View>
+              )}
+              <Image 
+                source={FUEL_MARKER} 
+                style={{ width: 30, height: 30, resizeMode: 'contain' }} 
+              />
+            </View>
+          </Marker>
+        )
+      })}
+    </>
+  )
+}, (prev, next) => {
+  return (
+    prev.stations === next.stations && 
+    prev.activeFuelSubType === next.activeFuelSubType
+  )
+})
+
+// Ensure these styles are updated to be very explicit
+const $markerContainer: ViewStyle = {
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 5,
+}
+
+const $badgePill: ViewStyle = {
+  backgroundColor: '#FF5A5F', // Use a hardcoded hex color
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 12,
+  borderWidth: 1.5,
+  borderColor: '#FFFFFF',
+  marginBottom: -2,
+  zIndex: 10,
+  elevation: 4, // Required for Android shadow/background stability
+}
+
+const $badgeText: TextStyle = {
+  color: '#FFFFFF',
+  fontSize: 10,
+  fontWeight: 'bold',
+}
