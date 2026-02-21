@@ -1,4 +1,4 @@
-import { FC, useMemo, useState, useRef, useEffect, useCallback } from "react"
+import React, { FC, useMemo, useState, useRef, useEffect, useCallback } from "react"
 import { ActivityIndicator, Platform, Pressable, View, ViewStyle, TextStyle, Image, ImageStyle, ScrollView, TouchableOpacity, PixelRatio, Linking, Modal, Alert, KeyboardAvoidingView, TextInput, StyleSheet, } from "react-native"
 import * as Clipboard from "expo-clipboard"
 import { Screen } from "@/components/Screen"
@@ -82,6 +82,14 @@ interface ReportData {
   sports_gas_name: string;
   regular_diesel_name: string;
   premium_diesel_name: string;
+}
+
+const FUEL_SUBTYPE_LABELS: Record<string, string> = {
+  regular_gas: "Regular",
+  premium_gas: "Premium",
+  sports_gas: "Sports",
+  regular_diesel: "Regular",
+  premium_diesel: "Premium"
 }
 
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -513,23 +521,34 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     fetchPending()
     setIsVoting(false)
   }
+
+// fsd
+// Inside MapScreen component
+const [activeFuelType, setActiveFuelType] = useState<string | null>(null)
+const [activeFuelSubType, setActiveFuelSubType] = useState<string | null>(null)
+
+const [tempFuelType, setTempFuelType] = useState<string | null>(null)
+const [tempFuelSubType, setTempFuelSubType] = useState<string | null>(null)
   
+
+
   const [isBrandPickerVisible, setIsBrandPickerVisible] = useState(false)
   const [activeBrands, setActiveBrands] = useState<string[]>([])
-  const [activeFuelType, setActiveFuelType] = useState<"gas" | "diesel">("gas")
   const [activeMaxPrice, setActiveMaxPrice] = useState<string>("")
   const [activeDistance, setActiveDistance] = useState<number | null>(120)  
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const hasFilterApplied = useMemo(() => {
-    const isFuelChanged = activeFuelType !== "gas"
+    const isFuelChanged = activeFuelType !== null
+    const isFuelSubTypeChange = activeFuelSubType !== null
     const isPriceChanged = activeMaxPrice !== ""
     const isDistanceChanged = activeDistance !== 120 && activeDistance !== null
     const isBrandsChanged = activeBrands.length > 0
 
-    return isFuelChanged || isPriceChanged || isDistanceChanged || isBrandsChanged
+    return isFuelChanged || isPriceChanged || isDistanceChanged || isBrandsChanged || isFuelSubTypeChange
   }, [activeFuelType, activeMaxPrice, activeDistance, activeBrands])
   const handleApplyAll = () => { 
     setActiveFuelType(tempFuelType)
+    setActiveFuelSubType(tempFuelSubType)
     setActiveMaxPrice(tempMaxPrice)
     setActiveBrands([...tempBrands])
     setActiveDistance(tempDistance)
@@ -541,14 +560,20 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
   const filteredStations = useMemo(() => {
     return stations.filter((s) => {
+      // 1. Brand Filter
       if (activeBrands.length > 0 && !activeBrands.includes(s.brand)) return false
       
+      // 2. Price Filter (Dynamic based on sub-type)
       const limit = parseFloat(activeMaxPrice)
       if (!isNaN(limit) && limit > 0) {
-        const price = activeFuelType === "gas" ? (s.regular_gas || 0) : (s.regular_diesel || 0)
+        // Use the specific sub-type selected, or fall back to a default based on category
+        const columnToCheck = activeFuelSubType || (activeFuelType === "gas" ? "regular_gas" : "regular_diesel")
+        const price = parseFloat(s[columnToCheck]) || 0
+        
         if (price === 0 || price > limit) return false
       }
 
+      // 3. Distance Filter
       if (activeDistance && userLocation) {
         const dist = getDistance(userLocation.latitude, userLocation.longitude, s.latitude, s.longitude)
         if (dist > activeDistance) return false
@@ -556,23 +581,24 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
       return true
     })
-  }, [stations, activeFuelType, activeMaxPrice, activeBrands, activeDistance, userLocation])
+  }, [stations, activeFuelType, activeFuelSubType, activeMaxPrice, activeBrands, activeDistance, userLocation])
 
-  const [tempFuelType, setTempFuelType] = useState<"gas" | "diesel">("gas")
   const [tempMaxPrice, setTempMaxPrice] = useState<string>("")
   const [tempBrands, setTempBrands] = useState<string[]>([]) 
   const [tempDistance, setTempDistance] = useState<number | null>(120) 
   const handleClearAll = () => { 
-    setTempFuelType("gas")
-    setTempMaxPrice("")
-    setTempBrands([])
-    setTempDistance(120) 
-    
-    setActiveFuelType("gas")
-    setActiveMaxPrice("")
-    setActiveBrands([])
-    setActiveDistance(120) 
-  }
+  setTempFuelType(null) // Changed from "gas" to null for "None" default
+  setTempFuelSubType(null)
+  setTempMaxPrice("")
+  setTempBrands([])
+  setTempDistance(120) 
+  
+  setActiveFuelType(null)
+  setActiveFuelSubType(null)
+  setActiveMaxPrice("")
+  setActiveBrands([])
+  setActiveDistance(120) 
+}
   const handleCancelFilters = () => { 
     setTempFuelType(activeFuelType)
     setTempMaxPrice(activeMaxPrice)
@@ -665,18 +691,44 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
           initialRegion={region}
           customMapStyle={MAP_STYLE}
         >
-          {/* {filteredStations?.length > 0 ? ( */}
-          {region.latitudeDelta < ZOOM_THRESHOLD && (
+          {/* fsd */}
+          {region.latitudeDelta < ZOOM_THRESHOLD && ( 
             <>
-              {filteredStations.map((s) => (
-                <Marker
-                  key={s.id}
-                  coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
-                  onPress={() => handleMarkerPress(s.id)}
-                  tracksViewChanges={false}
-                  image={FUEL_MARKER}
-                />
-              ))}
+              {filteredStations.map((s) => {
+                const priceValue = activeFuelSubType ? parseFloat(s[activeFuelSubType]) : 0;
+                const hasPrice = activeFuelSubType !== null && priceValue > 0;
+
+                return (
+                  <React.Fragment key={`group-${s.id}-${activeFuelSubType}`}>
+                    {/* 2. THE FLOATING PRICE OVERLAY */}
+                    {hasPrice && (
+                      <Marker
+                        key={`badge-${s.id}-${activeFuelSubType}`}
+                        coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
+                        // Anchor shifts the badge UP and to the RIGHT so it doesn't cover the pin
+                        // x: 0.5 is horizontal center, y: 1.5 pushes it up above the coordinate
+                        anchor={{ x: -0.2, y: 1.3 }} 
+                        pointerEvents="none" // Makes touches go through to the map/pin
+                        tracksViewChanges={false}
+                      >
+                        <View style={$floatingBadgePill}>
+                          <Text style={$floatingBadgeTextSmall}>
+                            {priceValue.toFixed(2)}
+                          </Text>
+                        </View>
+                      </Marker>
+                    )}
+                    {/* 1. THE STABLE NATIVE MARKER */}
+                    <Marker
+                      key={`pin-${s.id}`}
+                      coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
+                      onPress={() => handleMarkerPress(s.id)}
+                      image={FUEL_MARKER}
+                      tracksViewChanges={false}
+                    />
+                  </React.Fragment>
+                );
+              })}
               {pendingStations.map((ps) => (
                 <Marker 
                   key={`pending-${ps.id}`} 
@@ -703,56 +755,113 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
             )}
           </Pressable>
         </View>
-
+            {/* fsd */}
         {isFilterVisible && (
           <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={$filterDropdown}>
-            <Text weight="bold" size="xs">Fuel Type</Text>
-            <View style={$segmentedControl}>
-              {(["gas", "diesel"] as const).map(type => (
-                <TouchableOpacity key={type} style={[$segment, tempFuelType === type && $segmentActive]} onPress={() => setTempFuelType(type)}>
-                  <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>{type === 'gas' ? 'Gasoline' : 'Diesel'}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={{ marginTop: 15 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text weight="bold" size="xs">Distance Radius</Text>
-                <Text weight="bold" size="xs" style={{ color: colors.palette.primary500 }}>
-                  {tempDistance} km
-                </Text>
+            <>
+              <Text weight="bold" size="xs">Step 1: Select Fuel Category</Text>
+              <View style={$segmentedControl}>
+                {([null, "gas", "diesel"] as const).map((type) => (
+                  <TouchableOpacity 
+                    key={type ?? "none"} 
+                    style={[$segment, tempFuelType === type && $segmentActive]} 
+                    onPress={() => {
+                      setTempFuelType(type)
+                      if (!type) {
+                        setTempFuelSubType(null)
+                        setTempMaxPrice("")
+                      } else {
+                        setTempFuelSubType(type === 'gas' ? 'regular_gas' : 'regular_diesel')
+                      }
+                    }}
+                  >
+                    <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>
+                      {type === "gas" ? "Gasoline" : type === "diesel" ? "Diesel" : "None"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              
-              <Slider
-                style={{ width: '100%', height: 40 }}
-                minimumValue={1}
-                maximumValue={120}
-                step={1}
-                value={tempDistance || 120}
-                onValueChange={(val: number) => setTempDistance(val)}
-                minimumTrackTintColor={colors.palette.primary500}
-                maximumTrackTintColor="#D1D1D6"
-                thumbTintColor={colors.palette.primary500}
-              />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -8 }}>
-                <Text size="xxs" style={{ color: '#8E8E93' }}>1km</Text>
-                <Text size="xxs" style={{ color: '#8E8E93' }}>120km</Text>
+
+              {tempFuelType && (
+                <Animated.View entering={FadeInUp} style={{ marginTop: 15 }}>
+                  <Text weight="bold" size="xs">Step 2: Specific Type</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {(tempFuelType === "gas" 
+                        ? ["regular_gas", "premium_gas", "sports_gas"] 
+                        : ["regular_diesel", "premium_diesel"]
+                      ).map((sub) => (
+                        <TouchableOpacity 
+                          key={sub} 
+                          style={[$segment, tempFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]} 
+                          onPress={() => setTempFuelSubType(sub)}
+                        >
+                          <Text style={[$segmentText, tempFuelSubType === sub && $segmentTextActive, { fontSize: 10 }]}>
+                            {sub.split('_')[0].toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Step 3: Max Price (Optional)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                    <TextInput
+                      style={$priceInput}
+                      value={tempMaxPrice}
+                      onChangeText={setTempMaxPrice}
+                      placeholder="No Limit"
+                      keyboardType="numeric"
+                      placeholderTextColor="#C7C7CC"
+                    />
+                    <Text size="xxs" style={{ opacity: 0.6 }}>Per Liter</Text>
+                  </View>
+                </Animated.View>
+              )}
+            </>
+            <>
+              <View style={{ marginTop: 15 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text weight="bold" size="xs">Distance Radius</Text>
+                  <Text weight="bold" size="xs" style={{ color: colors.palette.primary500 }}>
+                    {tempDistance} km
+                  </Text>
+                </View>
+                
+                <Slider
+                  style={{ width: '100%', height: 40 }}
+                  minimumValue={1}
+                  maximumValue={120}
+                  step={1}
+                  value={tempDistance || 120}
+                  onValueChange={(val: number) => setTempDistance(val)}
+                  minimumTrackTintColor={colors.palette.primary500}
+                  maximumTrackTintColor="#D1D1D6"
+                  thumbTintColor={colors.palette.primary500}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: -8 }}>
+                  <Text size="xxs" style={{ color: '#8E8E93' }}>1km</Text>
+                  <Text size="xxs" style={{ color: '#8E8E93' }}>120km</Text>
+                </View>
               </View>
-            </View>
-
-            <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brands</Text>
-            <TouchableOpacity style={$brandPickerTrigger} onPress={() => { setTempBrands([...activeBrands]); setIsBrandPickerVisible(true); }}>
-               <Text size="sm" numberOfLines={1}>{tempBrands.length === 0 ? "All Brands" : tempBrands.join(", ")}</Text>
-               <Icon icon="caretRight" size={14} />
-            </TouchableOpacity>
-
-            <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Max Price (₱)</Text>
-            <TextInput style={$filterInput} keyboardType="numeric" placeholder="e.g. 65.00" value={tempMaxPrice} onChangeText={setTempMaxPrice} />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-              <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
-            </View>
+            </>
+            <>
+              <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brands</Text>
+              <TouchableOpacity style={$brandPickerTrigger} onPress={() => { setTempBrands([...activeBrands]); setIsBrandPickerVisible(true); }}>
+                <Text size="sm" numberOfLines={1}>{tempBrands.length === 0 ? "All Brands" : tempBrands.join(", ")}</Text>
+                <Icon icon="caretRight" size={14} />
+              </TouchableOpacity>
+            </>
+            <>
+              <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Max Price (₱)</Text>
+              <TextInput style={$filterInput} keyboardType="numeric" placeholder="e.g. 65.00" value={tempMaxPrice} onChangeText={setTempMaxPrice} />
+            </>
+            <>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
+              </View>
+            </>
           </Animated.View>
         )}
       </View>
@@ -1136,6 +1245,167 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 }
 
 // REGIONS STYLES
+const $floatingBadgePill: ViewStyle = {
+  // Use a slightly wider padding for the 00.00 format
+  paddingHorizontal: 7,
+  paddingVertical: 3,
+  
+  // Vibrant background to stand out against the map
+  backgroundColor: "#FF5A5F", 
+  
+  // This high radius ensures it stays a pill even if the price grows
+  borderRadius: 20, 
+  
+  // Thick white border prevents the badge from blending into the map colors
+  borderWidth: 2,
+  borderColor: "white",
+  
+  // Center the text perfectly
+  alignItems: "center",
+  justifyContent: "center",
+  
+  // Strong shadow for "floating" depth effect
+  elevation: 5,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 3,
+  
+  // Minimum width ensures it doesn't become a tiny circle if the price is short
+  minWidth: 42,
+}
+
+const $floatingBadgeTextSmall: TextStyle = {
+  color: "white",
+  fontSize: 11,
+  fontWeight: "800", // Extra bold for readability at small sizes
+  textAlign: "center",
+  // Fixes vertical alignment issues on some Android devices
+  includeFontPadding: false, 
+}
+const $floatingBadge: ViewStyle = {
+  position: "absolute",
+  top: 0,           // Adjusted to sit on the "shoulder" of the pin
+  right: -5,        // Shifted right to prevent overlapping the icon center
+  backgroundColor: colors.palette.secondary500,
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 12, // Keeps it rounded like a pill
+  borderWidth: 1.5,
+  borderColor: "white",
+  // Elevation for Android / Shadow for iOS to make it pop
+  elevation: 4,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+}
+
+const $floatingBadgeText: TextStyle = {
+  color: "white",
+  fontSize: 10,      // Slightly smaller to fit the 00.00 format comfortably
+  fontWeight: "bold",
+  textAlign: "center",
+}
+const $floatingBadgeContainer: ViewStyle = {
+  backgroundColor: colors.palette.primary500,
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 2,
+  borderColor: "white",
+  elevation: 6,
+}
+
+const $filterPriceInput: TextStyle = { 
+  color: colors.palette.primary500, 
+  fontSize: 18, 
+  fontWeight: "700", 
+  borderBottomWidth: 1, 
+  borderBottomColor: colors.palette.primary500, 
+  textAlign: 'center', 
+  minWidth: 80 
+}
+const $floatingPriceBadge: ViewStyle = {
+  backgroundColor: colors.palette.primary500,
+  width: 24,
+  height: 24,
+  borderRadius: 12, // Round div
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 1.5,
+  borderColor: "white",
+  // Shadow to make it look floating
+  elevation: 5,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 2,
+}
+
+const $priceBadgeText: TextStyle = {
+  color: "white",
+  fontSize: 10,
+  fontWeight: "bold",
+  textAlign: "center",
+}
+const $priceBadge: ViewStyle = {
+  backgroundColor: colors.palette.primary500,
+  width: 22,
+  height: 22,
+  borderRadius: 11, // Perfect circle
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 1.5,
+  borderColor: "white",
+  position: 'absolute',
+  top: -8,   // Adjust these to position precisely over the logo
+  right: -8,
+  zIndex: 10,
+  elevation: 4,
+}
+const $markerBubble: ViewStyle = {
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 34,
+  height: 34,
+  borderRadius: 17,
+  backgroundColor: "white",
+  borderWidth: 2,
+  borderColor: colors.palette.primary500,
+  elevation: 3,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.2,
+  shadowRadius: 2,
+}
+
+const $brandInitial: TextStyle = {
+  fontSize: 10,
+  fontWeight: "bold",
+  color: colors.palette.primary500,
+}
+
+const $priceBadgeContainer: ViewStyle = {
+  position: 'absolute',
+  top: -14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 20,
+}
+const $markerContainer: ViewStyle = {
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 40,
+  height: 40,
+}
+
+const $markerImage: ImageStyle = {
+  width: 32,
+  height: 32,
+}
 const $paymentContainer: ViewStyle = {
   marginTop: 16,
   paddingTop: 16,
