@@ -7,6 +7,8 @@ import {
   View,
   ViewStyle,
   TextStyle,
+  ScrollView,
+  RefreshControl,
 } from "react-native"
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated"
 
@@ -25,6 +27,13 @@ import { Header } from "@/components/Header"
 
 export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigation }) => {
   const { themed } = useAppTheme()
+
+  const [refreshing, setRefreshing] = useState(false)
+  const manualRefresh = async () => {
+      setRefreshing(true)
+      await Promise.allSettled([resetForm(), delay(750)])
+      setRefreshing(false)
+    }
 
   // Form state
   const [distanceKm, setDistanceKm] = useState<string>("")
@@ -200,65 +209,73 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
   return (
     <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
       <Header
-        title="Trip cost calculator"
-        safeAreaEdges={["top"]} 
-        LeftActionComponent={
-          <View style={$leftActionWrapper}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              accessibilityLabel="Go back"
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Icon icon="arrowLeft" size={24} color={"#fff"} />
-            </Pressable>
-          </View>
-        }
-        style={themed($headerStyle)}
-        titleStyle={themed($headerTitle)}
-      />
-      <View style={themed($titleWrap)}>
-        <Text style={themed($tagline)}>Calculate the fuel needed and total cost for your trip.</Text>
-      </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.select({ ios: "padding", android: undefined })}
-        style={themed($content)}
-      >
-        <Card
-          style={themed($card)}
-          ContentComponent={formContent}
+          title="Trip cost calculator"
+          safeAreaEdges={["top"]} 
+          LeftActionComponent={
+            <View style={$leftActionWrapper}>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                accessibilityLabel="Go back"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Icon icon="arrowLeft" size={24} color={"#fff"} />
+              </Pressable>
+            </View>
+          }
+          style={themed($headerStyle)}
+          titleStyle={themed($headerTitle)}
         />
+      <ScrollView
+        contentContainerStyle={themed($content)}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={manualRefresh} tintColor={colors.palette.primary500} />
+        }
+      >
+        <View style={themed($titleWrap)}>
+          <Text style={themed($tagline)}>Calculate the fuel needed and total cost for your trip.</Text>
+        </View>
 
-        {(litersNeeded !== null || tripCost !== null) && (
-          <Animated.View style={[themed($resultsWrap), resultStyle]}>
-            <Card
-              style={themed($resultsCard)}
-              ContentComponent={
-                <View>
-                  <Text preset="subheading" style={themed($resultsTitle)}>Estimate</Text>
-                  <View style={themed($resultRow)}>
-                    <Text style={themed($resultLabel)}>Fuel needed</Text>
-                    <Text style={themed($resultValue)}>{formatNumber(litersNeeded, 2)} L</Text>
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: undefined })}
+          style={themed($content)}
+        >
+          <Card
+            style={themed($card)}
+            ContentComponent={formContent}
+          />
+
+          {(litersNeeded !== null || tripCost !== null) && (
+            <Animated.View style={[themed($resultsWrap), resultStyle]}>
+              <Card
+                style={themed($resultsCard)}
+                ContentComponent={
+                  <View>
+                    <Text preset="subheading" style={themed($resultsTitle)}>Estimate</Text>
+                    <View style={themed($resultRow)}>
+                      <Text style={themed($resultLabel)}>Fuel needed</Text>
+                      <Text style={themed($resultValue)}>{formatNumber(litersNeeded, 2)} L</Text>
+                    </View>
+                    <View style={themed($divider)} />
+                    <View style={themed($resultRow)}>
+                      <Text style={themed($resultLabel)}>Trip cost</Text>
+                      <Text style={themed($resultValue)}>₱ {formatNumber(tripCost, 2)}</Text>
+                    </View>
+                    <Text style={themed($note)}>
+                      
+                    </Text>
+                    {/* Styled Disclaimer Box */}
+                    <View style={themed($disclaimerBox)}>
+                      <Icon icon="information" size={14} color={colors.textDim} />
+                      <Text size="xxs" style={themed($disclaimerText)}>Estimates assume constant speed and no traffic or load variations.</Text>
+                    </View>
                   </View>
-                  <View style={themed($divider)} />
-                  <View style={themed($resultRow)}>
-                    <Text style={themed($resultLabel)}>Trip cost</Text>
-                    <Text style={themed($resultValue)}>₱ {formatNumber(tripCost, 2)}</Text>
-                  </View>
-                  <Text style={themed($note)}>
-                    
-                  </Text>
-                  {/* Styled Disclaimer Box */}
-                  <View style={themed($disclaimerBox)}>
-                    <Icon icon="information" size={14} color={colors.textDim} />
-                    <Text size="xxs" style={themed($disclaimerText)}>Estimates assume constant speed and no traffic or load variations.</Text>
-                  </View>
-                </View>
-              }
-            />
-          </Animated.View>
-        )}
-      </KeyboardAvoidingView>
+                }
+              />
+            </Animated.View>
+          )}
+        </KeyboardAvoidingView>
+      </ScrollView>
     </Screen>
   )
 }

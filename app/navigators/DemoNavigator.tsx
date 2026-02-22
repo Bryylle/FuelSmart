@@ -49,11 +49,7 @@ export function DemoNavigator() {
           options={{
             tabBarLabel: "Home",
             tabBarIcon: ({ focused }) => (
-              <Icon
-                icon="home"
-                color={focused ? colors.tint : colors.tintInactive}
-                size={30}
-              />
+              <Icon icon="home" color={focused ? colors.tint : colors.tintInactive} size={30}/>
             ),
           }}
         />
@@ -64,11 +60,7 @@ export function DemoNavigator() {
           options={{
             tabBarLabel: "Map",
             tabBarIcon: ({ focused }) => (
-              <Icon
-                icon="map"
-                color={focused ? colors.tint : colors.tintInactive}
-                size={30}
-              />
+              <Icon icon="map" color={focused ? colors.tint : colors.tintInactive} size={30}/>
             ),
           }}
         />

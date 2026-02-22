@@ -13,7 +13,7 @@ import { debounce } from "lodash"
 import type { ThemedStyle } from "@/theme/types"
 import Animated, { FadeIn, FadeInUp, FadeOutUp } from "react-native-reanimated"
 import { formatDistanceToNow } from "date-fns"
-import { colors } from "@/theme/colorsDark"
+import { colors } from "@/theme/colors"
 import { initFuelMappings, FUEL_BRAND_MAP } from "../utils/fuelMappings"
 import Slider from '@react-native-community/slider'
 import * as Location from "expo-location"
@@ -34,6 +34,12 @@ const MAP_STYLE = [
   { featureType: "poi", elementType: "all", stylers: [{ visibility: "off" }] },
   { featureType: "transit", elementType: "all", stylers: [{ visibility: "off" }] }
 ]
+
+// const GCashLogo = require("@assets/icons/gcash.svg")
+// const MayaLogo = require("@assets/icons/maya.svg")
+import GCashLogo from "@assets/icons/gcash.svg"
+import MayaLogo from "@assets/icons/maya.svg"
+import { spacing } from "@/theme/spacing"
 
 interface Contributor {
   id: string;
@@ -742,13 +748,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         >
           {region.latitudeDelta < ZOOM_THRESHOLD && ( 
             <>
-              {region.latitudeDelta < ZOOM_THRESHOLD && (
-                <StationMarkers 
-                  stations={filteredStations}
-                  activeFuelSubType={activeFuelSubType}
-                  onMarkerPress={handleMarkerPress}
-                />
-              )}
+              <StationMarkers 
+                stations={filteredStations}
+                activeFuelSubType={activeFuelSubType}
+                onMarkerPress={handleMarkerPress}
+              />
               {pendingStations.map((ps) => (
                 <Marker 
                   key={`pending-marker-${ps.id}`}
@@ -772,7 +776,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                 {activeBrands.length === 0 ? "All Brands" : `${activeBrands.length} Selected`} • {activeDistance}km radius
               </Text>
               {hasFilterApplied && (
-                <PressableIcon icon="close" size={24} onPress={handleClearAll}/>
+                <PressableIcon icon="close" color={colors.palette.neutral100} size={24} onPress={handleClearAll} style={{ backgroundColor: colors.palette.neutral800, borderRadius: 20}}/>
               )}
             </Pressable>
           </View>
@@ -796,7 +800,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                         }
                       }}
                     >
-                      <Text style={[$segmentText, tempFuelType === type && $segmentTextActive]}>
+                      <Text style={[$fuelTypeSegment, tempFuelType === type && $fuelTypeSegmentActive]}>
                         {type === "gas" ? "Gasoline" : type === "diesel" ? "Diesel" : "None"}
                       </Text>
                     </TouchableOpacity>
@@ -804,25 +808,23 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                 </View>
 
                 {tempFuelType && (
-                  <Animated.View entering={FadeInUp} style={{ marginTop: 15 }}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {(tempFuelType === "gas" 
-                          ? ["regular_gas", "premium_gas", "sports_gas"] 
-                          : ["regular_diesel", "premium_diesel"]
-                        ).map((sub) => (
-                          <TouchableOpacity 
-                            key={sub} 
-                            style={[$segment, tempFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]} 
-                            onPress={() => setTempFuelSubType(sub)}
-                          >
-                            <Text style={[$segmentText, tempFuelSubType === sub && $segmentTextActive, { fontSize: 10 }]}>
-                              {sub.split('_')[0].toUpperCase()}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </ScrollView>
+                  <Animated.View entering={FadeInUp} style={[{ marginTop: spacing.xxxs, width: "100%" }]}>
+                    <View style={[$segmentedControl, ]}>
+                      {(tempFuelType === "gas" 
+                        ? ["regular_gas", "premium_gas", "sports_gas"] 
+                        : ["regular_diesel", "premium_diesel"]
+                      ).map((sub) => (
+                        <TouchableOpacity 
+                          key={sub} 
+                          style={[$segment, tempFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]} 
+                          onPress={() => setTempFuelSubType(sub)}
+                        >
+                          <Text style={[$fuelTypeSegment, tempFuelSubType === sub && $fuelTypeSegmentActive, { fontSize: 10 }]}>
+                            {sub.split('_')[0].toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
 
                     <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Max Price (Optional)</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
@@ -927,8 +929,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                     <View style={{ flex: 1 }}>
                       <Text weight="bold" size="md">{selectedStation.brand}</Text>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
-                        <Text size="xxs" style={{ opacity: 0.6 }}>
-                          {selectedStation.city} • {selectedStation.updated_at ? formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : "Recent"}
+                        <Text size="sm" style={{ opacity: 0.6 }}>
+                          {selectedStation.city}{selectedStation.updated_at ? " • " + formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : "Recent"}
                         </Text>
                         
                         {selectedStation.last_updated_by ? (
@@ -937,7 +939,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                               if (uid) handlePressedContributor(uid)
                             }}
                           >
-                            <Text size="xxs" style={{ fontWeight: 'bold' }}>
+                            <Text size="sm" style={{ fontWeight: 'bold' }}>
                               {" "}by {getDisplayName(selectedStation.last_updated_by.full_name, selectedStation.last_updated_by.b_show_name)}
                             </Text>
                           </TouchableOpacity>
@@ -951,7 +953,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
                     {!selectedStation.isPending && (
                       <TouchableOpacity onPress={toggleFavorite} style={$favoriteBtn}>
-                        <Icon icon="heart" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
+                        <Icon icon="star" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1010,22 +1012,19 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       {selectedStation.isLoading ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                           <ActivityIndicator size="large" color={colors.palette.primary500} />
-                          <Text size="xxs" style={{ marginTop: 8, opacity: 0.5 }}>Fetching latest prices...</Text>
+                          <Text size="sm" style={{ marginTop: 8, opacity: 0.5 }}>Fetching latest prices...</Text>
                         </View>
                       ) : (
                         <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
                           <View style={$priceGridContainer}>
                             {(() => {
-                              // Use the map to get specific labels for this brand, fallback to Default
-                              const config = FUEL_BRAND_MAP[selectedStation.brand] || FUEL_BRAND_MAP["Default"]
-                              
+                              const config = FUEL_BRAND_MAP[selectedStation.brand]
                               return Object.keys(config).map((key, index) => {
-                                // If the brand config has a null/empty label for this key, hide it
                                 if (!config[key]) return null;
 
                                 return (
-                                  <View key={key} style={$dataEntry}>
-                                    <Text style={$dataLabel}>{config[key]}</Text>
+                                  <View key={key} style={{ width: "33.33%", alignItems: "center" }}>
+                                    <Text style={$fuelTypeLabel}>{config[key]}</Text>
                                     
                                     {/* Toggle between Input for Reporting and Text for viewing */}
                                     {isReporting ? (
@@ -1037,7 +1036,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                                         placeholder="0.00" 
                                       />
                                     ) : ( 
-                                      <Text style={$dataValue}>
+                                      <Text style={$fuelTypePrice}>
                                         ₱{(Number(selectedStation[key]) || 0).toFixed(2)}
                                       </Text> 
                                     )}
@@ -1132,37 +1131,36 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                   </View>
                 </View>
 
-                <View style={$paymentContainer}>
+                <TouchableOpacity style={$paymentContainer} onPress={() => handleCopyNumber(currentContributor?.phone || "")} activeOpacity={0.5}>
                   {(currentContributor?.b_show_gcash || currentContributor?.b_show_maya) && currentContributor?.phone && (
-                    <TouchableOpacity 
-                      style={$paymentCard} 
-                      onPress={() => handleCopyNumber(currentContributor?.phone || "")}
-                      activeOpacity={0.8}
-                    >
+                    <View style={$paymentCard}>
                       <View style={$cardTopRow}>
-                        <Text size="xxs" weight="bold" style={{ color: "#8E8E93" }}>
-                          TIP VIA GCASH / MAYA
-                        </Text>
-                        <Icon icon="search" size={16} color={"blue"} />
+                          <Text size="xxs" weight="bold" style={{ color: colors.palette.neutral400 }}>
+                            TIP VIA
+                          </Text>
+                        <Icon icon="copy" size={20} color={colors.palette.neutral400} />
                       </View>
 
                       <View style={$cardBottomRow}>
-                        <View style={$logoGroup}>
-                          {currentContributor?.b_show_gcash && (
-                            <Image source={require("@assets/icons/search.png")} resizeMode="contain" />
-                          )}
-                          {currentContributor?.b_show_maya && (
-                            <Image source={require("@assets/icons/search.png")} resizeMode="contain" />
-                          )}
-                        </View>
-                        
+                        <View style={$eWalletGroup}>
+                            {currentContributor?.b_show_gcash && (
+                              <View style={$eWalletWrapper}>
+                                <GCashLogo width={32} height={20} />
+                              </View>
+                            )}
+                            {currentContributor?.b_show_maya && (
+                              <View style={$eWalletWrapper}>
+                                <MayaLogo width={32} height={20} />
+                              </View>
+                            )}
+                          </View>
                         <Text weight="semiBold" style={$phoneNumberText}>
                           {currentContributor?.phone}
                         </Text>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   )}
-                </View>
+                </TouchableOpacity>
               </Animated.View>
             )}
 
@@ -1293,152 +1291,19 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   )
 }
 
-// REGIONS STYLES
-const $customMarkerWrapper: ViewStyle = {
-  alignItems: 'center',
-  justifyContent: 'center',
-  height: 50, // Increase this if your badge is getting cut off
-  width: 60,
+// #region STYLES
+const $eWalletGroup: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8, // Clean spacing between logos
 }
-
-const $markerPinImage: ImageStyle = {
-  width: 48,
-  height: 48,
-  resizeMode: 'contain',
-}
-
-const $floatingBadgePill: ViewStyle = {
-  backgroundColor: "#000000",
-  paddingHorizontal: 4,
-  paddingVertical: 2,
-  borderRadius: 4,
-  position: 'absolute',
-  top: -5, // Lift it above the pin
-  zIndex: 2,
-}
-const $floatingBadgeTextSmall: TextStyle = {
-  color: "white",
-  fontSize: 11,
-  fontWeight: "800", // Extra bold for readability at small sizes
-  textAlign: "center",
-  // Fixes vertical alignment issues on some Android devices
-  includeFontPadding: false, 
-}
-const $floatingBadge: ViewStyle = {
-  position: "absolute",
-  top: 0,           // Adjusted to sit on the "shoulder" of the pin
-  right: -5,        // Shifted right to prevent overlapping the icon center
-  backgroundColor: colors.palette.secondary500,
+const $eWalletWrapper: ViewStyle = {
+  backgroundColor: colors.palette.neutral100,
   paddingHorizontal: 6,
-  paddingVertical: 2,
-  borderRadius: 12, // Keeps it rounded like a pill
-  borderWidth: 1.5,
-  borderColor: "white",
-  // Elevation for Android / Shadow for iOS to make it pop
-  elevation: 4,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.25,
-  shadowRadius: 3.84,
-}
-
-const $floatingBadgeText: TextStyle = {
-  color: "white",
-  fontSize: 10,      // Slightly smaller to fit the 00.00 format comfortably
-  fontWeight: "bold",
-  textAlign: "center",
-}
-const $floatingBadgeContainer: ViewStyle = {
-  backgroundColor: colors.palette.primary500,
-  width: 26,
-  height: 26,
-  borderRadius: 13,
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderWidth: 2,
-  borderColor: "white",
-  elevation: 6,
-}
-
-const $filterPriceInput: TextStyle = { 
-  color: colors.palette.primary500, 
-  fontSize: 18, 
-  fontWeight: "700", 
-  borderBottomWidth: 1, 
-  borderBottomColor: colors.palette.primary500, 
-  textAlign: 'center', 
-  minWidth: 80 
-}
-const $floatingPriceBadge: ViewStyle = {
-  backgroundColor: colors.palette.primary500,
-  width: 24,
-  height: 24,
-  borderRadius: 12, // Round div
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderWidth: 1.5,
-  borderColor: "white",
-  // Shadow to make it look floating
-  elevation: 5,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.3,
-  shadowRadius: 2,
-}
-
-const $priceBadgeText: TextStyle = {
-  color: "white",
-  fontSize: 10,
-  fontWeight: "bold",
-  textAlign: "center",
-}
-const $priceBadge: ViewStyle = {
-  backgroundColor: colors.palette.primary500,
-  width: 22,
-  height: 22,
-  borderRadius: 11, // Perfect circle
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderWidth: 1.5,
-  borderColor: "white",
-  position: 'absolute',
-  top: -8,   // Adjust these to position precisely over the logo
-  right: -8,
-  zIndex: 10,
-  elevation: 4,
-}
-const $markerBubble: ViewStyle = {
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 34,
-  height: 34,
-  borderRadius: 17,
-  backgroundColor: "white",
-  borderWidth: 2,
-  borderColor: colors.palette.primary500,
-  elevation: 3,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.2,
-  shadowRadius: 2,
-}
-
-const $brandInitial: TextStyle = {
-  fontSize: 10,
-  fontWeight: "bold",
-  color: colors.palette.primary500,
-}
-
-const $priceBadgeContainer: ViewStyle = {
-  position: 'absolute',
-  top: -14,
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 20,
-}
-const $markerImage: ImageStyle = {
-  width: 32,
-  height: 32,
+  paddingVertical: 4,
+  borderRadius: 4,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral300,
 }
 const $paymentContainer: ViewStyle = {
   marginTop: 16,
@@ -1465,16 +1330,8 @@ const $cardTopRow: ViewStyle = {
 const $cardBottomRow: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
+  justifyContent: "space-between",
 }
-
-const $logoGroup: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 6,
-  marginRight: 12,
-}
-
-
 const $phoneNumberText: TextStyle = {
   fontSize: 17,
   color: "#1C1C1E",
@@ -1491,11 +1348,8 @@ const $phoneRow: ViewStyle = {
   borderWidth: 1,
   borderColor: "#E5E5EA",
 }
-
 const $phoneInfo: ViewStyle = { flex: 1 }
-
 const $paymentIcons: ViewStyle = { flexDirection: "row", gap: 8 }
-
 const $paymentLogo: ViewStyle = { width: 24, height: 24 }
 const $fuelTag: ViewStyle = {
   backgroundColor: "white",
@@ -1505,7 +1359,6 @@ const $fuelTag: ViewStyle = {
   borderWidth: 1,
   borderColor: colors.palette.primary500,
 }
-
 const $modalBtns: ViewStyle = {
   padding: 12,
   borderRadius: 8,
@@ -1677,7 +1530,7 @@ const $tierRow: ViewStyle = { flexDirection: "row", alignItems: "center" }
 const $statsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 16, padding: 16, marginBottom: 12 }
 const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
 const $statValue: TextStyle = { color: "#1C1C1E", fontSize: 18 }
-const $statLabel: TextStyle = { color: "#8E8E93", marginTop: 4 }
+const $statLabel: TextStyle = { color: colors.palette.neutral400, marginTop: 4 }
 const $closeBtn: ViewStyle = { backgroundColor: "#1737ba", paddingVertical: 14, borderRadius: 16, alignItems: "center" }
 const $headerStyle: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: "#1737ba",
@@ -1699,8 +1552,8 @@ const $filterDropdown: ViewStyle = { backgroundColor: "white", marginTop: 10, bo
 const $segmentedControl: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 10, padding: 2, marginTop: 8 }
 const $segment: ViewStyle = { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 8 }
 const $segmentActive: ViewStyle = { backgroundColor: "white", elevation: 2 }
-const $segmentText: TextStyle = { fontSize: 12, color: "#8E8E93" }
-const $segmentTextActive: TextStyle = { color: colors.palette.primary500, fontWeight: "bold" }
+const $fuelTypeSegment: TextStyle = { fontSize: 12, color: colors.palette.neutral400}
+const $fuelTypeSegmentActive: TextStyle = { color: colors.palette.primary500, fontWeight: "bold" }
 const $brandPickerTrigger: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F2F2F7', borderRadius: 10, padding: 12, marginTop: 8 }
 const $filterInput: TextStyle = { backgroundColor: "#F2F2F7", borderRadius: 10, padding: 12, marginTop: 8, fontSize: 16 }
 const $brandModalOverlay: ViewStyle = { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }
@@ -1724,10 +1577,9 @@ const $favoriteBtn: ViewStyle = { padding: 8 }
 const $priceDashboard: ViewStyle = { backgroundColor: "#F2F2F7", borderRadius: 16, marginTop: 10, height: 160, borderWidth: 1, borderColor: "#E5E5EA" }
 const $scrollContentInternal: ViewStyle = { paddingVertical: 14, paddingHorizontal: 8 }
 const $priceGridContainer: ViewStyle = { flexDirection: "row", flexWrap: "wrap", rowGap: 16 }
-const $dataEntry: ViewStyle = { width: "33.33%", alignItems: "center" }
-const $verticalDivider: ViewStyle = { position: 'absolute', right: 0, height: '60%', width: 1, backgroundColor: "#D1D1D6" }
-const $dataLabel: TextStyle = { color: "#8E8E93", fontSize: 10, fontWeight: "600" }
-const $dataValue: TextStyle = { color: "#1C1C1E", fontSize: 18, fontWeight: "700" }
+const $verticalDivider: ViewStyle = { position: 'absolute', right: 0, height: '65%', width: 1, backgroundColor: "#D1D1D6" }
+const $fuelTypeLabel: TextStyle = { color: "#8E8E93", fontSize: 14, fontWeight: "600" }
+const $fuelTypePrice: TextStyle = { color: "#1C1C1E", fontSize: 16, fontWeight: "700" }
 const $priceInput: TextStyle = { color: colors.palette.primary500, fontSize: 18, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.palette.primary500, textAlign: 'center', minWidth: 50 }
 const $buttonAbsoluteWrapper: ViewStyle = { position: "absolute", bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: "white" }
 const $buttonRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between" }
@@ -1765,7 +1617,6 @@ const StationMarkers = React.memo(({
         const priceValue = activeFuelSubType ? parseFloat(s[activeFuelSubType]) : 0
         const hasPrice = activeFuelSubType !== null && priceValue > 0
         
-        // We still use a unique key to force a clean slate when filters change
         const markerKey = `marker-${s.id}-${activeFuelSubType || "none"}`
 
         return (
@@ -1773,13 +1624,12 @@ const StationMarkers = React.memo(({
             key={markerKey}
             coordinate={{ latitude: Number(s.latitude), longitude: Number(s.longitude) }}
             onPress={() => onMarkerPress(s.id)}
-            // Use the state here!
             tracksViewChanges={shouldTrack}
           >
-            <View style={$markerContainer}>
+            <View style={$priceBadgeContainer}>
               {hasPrice && (
-                <View style={$badgePill}>
-                  <Text style={$badgeText}>{priceValue.toFixed(2)}</Text>
+                <View style={$priceBadgePill}>
+                  <Text style={$priceBadgeText}>P{priceValue.toFixed(2)}</Text>
                 </View>
               )}
               <Image 
@@ -1799,26 +1649,25 @@ const StationMarkers = React.memo(({
   )
 })
 
-// Ensure these styles are updated to be very explicit
-const $markerContainer: ViewStyle = {
+const $priceBadgeContainer: ViewStyle = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: 5,
 }
 
-const $badgePill: ViewStyle = {
-  backgroundColor: '#FF5A5F', // Use a hardcoded hex color
+const $priceBadgePill: ViewStyle = {
+  backgroundColor: colors.palette.secondary600,
   paddingHorizontal: 6,
   paddingVertical: 2,
-  borderRadius: 12,
-  borderWidth: 1.5,
-  borderColor: '#FFFFFF',
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: "#FFFFFF",
   marginBottom: -2,
   zIndex: 10,
   elevation: 4, // Required for Android shadow/background stability
 }
 
-const $badgeText: TextStyle = {
+const $priceBadgeText: TextStyle = {
   color: '#FFFFFF',
   fontSize: 10,
   fontWeight: 'bold',

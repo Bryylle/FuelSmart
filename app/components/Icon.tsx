@@ -126,10 +126,11 @@ export const iconRegistry = {
   medalBronze: require("@assets/icons/download/medal-bronze.png"),
   search: require("@assets/icons/search.png"),
   information: require("@assets/icons/information.png"),
-  carWash: require("@assets/icons/car_wash.png"),
+  car_wash: require("@assets/icons/car_wash.png"),
   towing: require("@assets/icons/towing.png"),
-  tireRepair: require("@assets/icons/tire_repair.png"),
-  carRepair: require("@assets/icons/car_repair.png"),
+  tire_repair: require("@assets/icons/tire_repair.png"),
+  car_repair: require("@assets/icons/car_repair.png"),
+  car_rental: require("@assets/icons/car_rental.png"),
   map: require("@assets/icons/map.png"),
   parking: require("@assets/icons/parking.png"),
   profile: require("@assets/icons/profile.png"),
@@ -146,6 +147,7 @@ export const iconRegistry = {
   layers: require("@assets/icons/layers.png"),  
   reset_focus: require("@assets/icons/reset_focus.png"),  
   add_marker: require("@assets/icons/add_marker.png"),  
+  copy: require("@assets/icons/copy.png"),  
 }
 
 const $imageStyleBase: ImageStyle = {

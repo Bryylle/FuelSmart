@@ -9,6 +9,7 @@ import {
   ColorValue,
   Linking,
   RefreshControl,
+  TouchableOpacity,
 } from "react-native"
 
 import { Screen } from "@/components/Screen"
@@ -139,10 +140,11 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
   const services: ServiceItem[] = useMemo(
     () => [
       { serviceKey: "parking", labelTx: "demoShowroomScreen:servicesParking", icon: "parking" },
-      { serviceKey: "carWash", labelTx: "demoShowroomScreen:servicesCarWash", icon: "carWash" },
-      { serviceKey: "vulcanizing", labelTx: "demoShowroomScreen:servicesVulcanizing", icon: "tireRepair" },
+      { serviceKey: "car_wash", labelTx: "demoShowroomScreen:servicesCarWash", icon: "car_wash" },
+      { serviceKey: "vulcanizing", labelTx: "demoShowroomScreen:servicesVulcanizing", icon: "tire_repair" },
       { serviceKey: "towing", labelTx: "demoShowroomScreen:servicesTowing", icon: "towing" },
-      { serviceKey: "servicing", labelTx: "demoShowroomScreen:servicesServicing", icon: "carRepair" },
+      { serviceKey: "servicing", labelTx: "demoShowroomScreen:servicesServicing", icon: "car_repair" },
+      { serviceKey: "rental", labelTx: "demoShowroomScreen:servicesServicing", icon: "car_rental" },
     ],
     [],
   )
@@ -192,6 +194,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           <Grid>{services.map((s) => (<ServiceTile key={s.serviceKey} {...s} />))}</Grid>
         </SectionCard>
 
+        {/* --FORECAST CARD */}
         {/* Forecast Card */}
         <SectionCard testID="forecast-card">
           <View style={[themed($sectionHeader), { marginBottom: 4 }]}>
@@ -209,37 +212,43 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
             />
           )}
 
-          {isLoadingPrices ? (
-            <View style={{ gap: 10 }}><LoadingSkeletonRow /><LoadingSkeletonRow /></View>
-          ) : hasErrorPrices ? (
-            <Text size="sm" style={themed($errorText)} tx="demoShowroomScreen:commonLoadError" />
-          ) : (
-            <>
-              <View style={themed($priceDashboard)}>
-                <View style={themed($priceGridContainer)}>
-                  {forecastData.map((f, index) => (
-                    <View key={f.fuel} style={themed($dataEntry)}>
-                      <Text style={themed($dataLabel)} tx={f.labelTx} />
-                      <Text 
-                        style={[themed($dataValue), { color: f.isIncrease ? colors.error : colors.palette.accent500 }]}
-                        text={`${f.isIncrease ? "+" : "-"}₱${Number(f.amount || 0).toFixed(2)}`}
-                      />
-                      {index < 2 && <View style={themed($verticalDivider)} />}
-                    </View>
-                  ))}
+          {/* FIXED HEIGHT WRAPPER STARTS HERE */}
+          <View style={themed($forecastContentWrapper)}>
+            {isLoadingPrices ? (
+              <View style={$skeletonContainer}>
+                <LoadingSkeletonRow />
+                <LoadingSkeletonRow />
+              </View>
+            ) : hasErrorPrices ? (
+              <Text size="sm" style={themed($errorText)} tx="demoShowroomScreen:commonLoadError" />
+            ) : (
+              <>
+                <View style={themed($priceDashboard)}>
+                  <View style={themed($priceGridContainer)}>
+                    {forecastData.map((f, index) => (
+                      <View key={f.fuel} style={themed($dataEntry)}>
+                        <Text style={themed($dataLabel)} tx={f.labelTx} />
+                        <Text 
+                          style={[themed($dataValue), { color: f.isIncrease ? colors.error : colors.palette.accent500 }]}
+                          text={`${f.isIncrease ? "+" : "-"}₱${Number(f.amount || 0).toFixed(2)}`}
+                        />
+                        {index < 2 && <View style={themed($verticalDivider)} />}
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
 
-              {/* Styled Disclaimer Box */}
-              <View style={themed($disclaimerBox)}>
-                <Icon icon="information" size={14} color={colors.textDim} />
-                <Text size="xxs" style={themed($disclaimerText)} tx="demoShowroomScreen:forecastDisclaimer" />
-              </View>
-            </>
-          )}
+                <View style={themed($disclaimerBox)}>
+                  <Icon icon="information" size={14} color={colors.textDim} />
+                  <Text size="xxs" style={themed($disclaimerText)} tx="demoShowroomScreen:forecastDisclaimer" />
+                </View>
+              </>
+            )}
+          </View>
+          {/* FIXED HEIGHT WRAPPER ENDS HERE */}
         </SectionCard>
-
-        {/* LTO News */}
+        {/* --FORECAST CARD */}
+        {/* --LTO News */}
         <SectionCard testID="lto-card">
           <View style={themed($sectionHeader)}>
             <Text preset="subheading" tx="demoShowroomScreen:ltoTitle" />
@@ -250,30 +259,40 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           <Text size="sm" style={themed($mutedText)} tx="demoShowroomScreen:ltoEmpty" />
         </SectionCard>
 
-        {/* CTA Card */}
+        {/* --CTA Card */}
         <SectionCard testID="cta-card">
           <Text preset="subheading" style={themed($ctaTitle)} tx="demoShowroomScreen:planTripTitle" />
           <Text size="sm" style={themed($ctaSubtitle)} tx="demoShowroomScreen:planTripSubtitle" />
           
-          <Button 
+          <TouchableOpacity 
             onPress={onComputeTripPress} 
-            style={themed($ctaButton)}
-            RightAccessory={(props) => (
-              <Icon icon="caretRight" size={18} color={colors.background} {...props} />
-            )}
+            style={[themed($ctaButton), {flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center"}]}
+            // RightAccessory={(props) => (
+            //   <Icon icon="caretRight" size={18} color={colors.background} {...props} />
+            // )}
           >
             <Text 
               preset="bold" 
               style={themed($ctaButtonText)} 
               tx="demoShowroomScreen:planTripCta" 
             />
-          </Button>
+            <Icon icon="caretRight" size={20} color={colors.background}/>
+          </TouchableOpacity>
         </SectionCard>
 
         <View style={$spacerBottom} />
       </ScrollView>
     </Screen>
   )
+}
+// #region STYLES
+const $forecastContentWrapper: ThemedStyle<ViewStyle> = () => ({
+  minHeight: 125, // Adjust this value to match your rendered data height exactly
+  justifyContent: "center", // Keeps the loader centered vertically while waiting
+})
+
+const $skeletonContainer: ViewStyle = {
+  gap: 16,
 }
 const $ctaTitle: TextStyle = { 
   marginBottom: 4 
@@ -290,6 +309,7 @@ const $ctaButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   borderRadius: 16,
   borderWidth: 0,
   minHeight: 56, // Slightly taller for a more "tappable" feel
+  padding: spacing.md
 })
 
 const $ctaButtonText: ThemedStyle<TextStyle> = ({ colors }) => ({ 
@@ -347,9 +367,9 @@ const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
 const $lastUpdatedText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, fontSize: 10 })
 const $headerLinkText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint, textDecorationLine: "underline" })
 const $headerLinkWrap: ViewStyle = { paddingHorizontal: 4 }
-const $grid: ViewStyle = { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }
+const $grid: ViewStyle = { flexDirection: "row", flexWrap: "wrap"}
 const $serviceTile: ViewStyle = { width: "33.3333%", paddingHorizontal: 4, marginBottom: 16, alignItems: "center" }
-const $serviceIconWrap: ThemedStyle<ViewStyle> = ({ colors }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, marginBottom: 4 })
+const $serviceIconWrap: ThemedStyle<ViewStyle> = ({ colors }) => ({marginBottom: 4})
 const $serviceLabel: TextStyle = { textAlign: "center" }
 const $skeletonRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8 }
 const $skeletonBlock: ThemedStyle<ViewStyle> = ({ colors }) => ({ height: 14, borderRadius: 4, backgroundColor: colors.border, width: "50%", opacity: 0.6 })

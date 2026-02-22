@@ -1,4 +1,5 @@
 const palette = {
+  // Neutrals - Grays and Off-whites
   neutral100: "#FFFFFF",
   neutral200: "#F4F2F1",
   neutral300: "#D7CEC9",
@@ -9,77 +10,60 @@ const palette = {
   neutral800: "#191015",
   neutral900: "#000000",
 
-  primary100: "#F4E0D9",
-  primary200: "#E8C1B4",
-  primary300: "#DDA28E",
-  primary400: "#D28468",
-  primary500: "#C76542",
-  primary600: "#A54F31",
+  // Primary - #1737BA (Blue) - 60%
+  primary100: "#E8EBF8",
+  primary200: "#B9C2E9",
+  primary300: "#8A99D9",
+  primary400: "#5B70CA",
+  primary500: "#1737BA",
+  primary600: "#122C95",
 
-  secondary100: "#DCDDE9",
-  secondary200: "#BCC0D6",
-  secondary300: "#9196B9",
-  secondary400: "#626894",
-  secondary500: "#41476E",
+  // Secondary - #BA1738 (Red) - 30%
+  secondary100: "#F8E8EB",
+  secondary200: "#E9B9C2",
+  secondary300: "#D98A99",
+  secondary400: "#CA5B70",
+  secondary500: "#BA1738",
+  secondary600: "#95122D",
 
-  accent100: "#1737ba",
-  accent200: "#FFE1B2",
-  accent300: "#FDD495",
-  accent400: "#FBC878",
-  accent500: "#FFBB50",
+  // Accent - #38BA17 (Green) - 10%
+  accent100: "#EBF8E8",
+  accent200: "#C2E9B9",
+  accent300: "#99D98A",
+  accent400: "#70CA5B",
+  accent500: "#38BA17", // Main Accent Green
+  accent600: "#2D9512",
 
-  angry100: "#F2D6CD",
-  angry500: "#C03403",
+  // Error/Angry
+  angry100: "#FDE8E8",
+  angry500: "#BA1738", // Linked to Secondary Red
 
   overlay20: "rgba(25, 16, 21, 0.2)",
   overlay50: "rgba(25, 16, 21, 0.5)",
 } as const
 
 export const colors = {
-  /**
-   * The palette is available to use, but prefer using the name.
-   * This is only included for rare, one-off cases. Try to use
-   * semantic names as much as possible.
-   */
   palette,
-  /**
-   * A helper for making something see-thru.
-   */
   transparent: "rgba(0, 0, 0, 0)",
+
   /**
-   * The default text color in many components.
+   * Semantic Colors
    */
   text: palette.neutral800,
-  /**
-   * Secondary text information.
-   */
   textDim: palette.neutral600,
-  /**
-   * The default color of the screen background.
-   */
-  background: palette.neutral200,
-  /**
-   * The default border color.
-   */
-  border: palette.neutral400,
-  /**
-   * The main tinting color.
-   */
+  background: palette.neutral100,
+  border: palette.neutral300,
+
+  // Main brand tinting
   tint: palette.primary500,
-  /**
-   * The inactive tinting color.
-   */
-  tintInactive: palette.neutral300,
-  /**
-   * A subtle color used for lines.
-   */
-  separator: palette.neutral300,
-  /**
-   * Error messages.
-   */
-  error: palette.angry500,
-  /**
-   * Error Background.
-   */
-  errorBackground: palette.angry100,
+  tintInactive: palette.primary200,
+
+  separator: palette.neutral200,
+
+  // Using the Secondary Red for Errors
+  error: palette.secondary500,
+  errorBackground: palette.secondary100,
+
+  // Success state (Optional semantic addition)
+  success: palette.accent500,
 } as const
