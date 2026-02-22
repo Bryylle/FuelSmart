@@ -74,6 +74,7 @@ interface Station {
 interface AppUser {
   id: string
   favorite_stations: string[]
+  no_incorrect_location_report: number
 }
 
 interface ReportData {
@@ -133,7 +134,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
       const { data: profile, error: profileError } = await supabase
         .from("users")
-        .select("id, favorite_stations")
+        .select("id, favorite_stations, no_incorrect_location_report")
         .eq("id", authData.user.id)
         .single()
 
@@ -142,6 +143,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         setLoggedInUser({
           id: profile.id,
           favorite_stations: favs,
+          no_incorrect_location_report: profile.no_incorrect_location_report,
         })
         setFavorites(favs) 
       }
@@ -389,14 +391,17 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       <View style={$toggleRow}>
         <Text text={label} style={{ flex: 1 }} />
         <TouchableOpacity 
+          disabled={isExistingBrand} 
           onPress={() => setReportData({ ...reportData, [boolKey]: !reportData[boolKey] })}
-          style={[$toggleBtn, reportData[boolKey] && $toggleBtnActive]}
+          style={[$toggleBtn, reportData[boolKey] && $toggleBtnActive, isExistingBrand && { opacity: 0.5 }]}
         >
           <Text text={reportData[boolKey] ? "YES" : "NO"} size="xs" style={{ color: "white", fontWeight: "bold" }} />
         </TouchableOpacity>
       </View>
-      {reportData[boolKey] && (
-        <Animated.View entering={FadeInUp}>
+      
+      {/* Only show marketing name input if it's a NEW brand */}
+      {reportData[boolKey] && !isExistingBrand && (
+        <Animated.View entering={FadeInUp} exiting={FadeOutUp}>
           <TextInput 
             placeholder={`Marketing Name (${placeholder})`} 
             style={$miniInput} 
@@ -419,14 +424,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       return
     }
 
-    const { data: userData } = await supabase
-      .from('users')
-      .select('no_incorrect_reports')
-      .eq('id', loggedInUser.id)
-      .single()
-
-    if (userData && userData.no_incorrect_reports >= 3) {
-      Alert.alert("Access Restricted", "You cannot add markers because you reached 3 incorrect reports.")
+    if (loggedInUser.no_incorrect_location_report >= 3) {
+      Alert.alert("Access Restricted", "You cannot add markers because you reached 3 incorrect location reports.")
       return
     }
 
@@ -444,51 +443,78 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   }
 
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const handleFinalSubmit = async (data: ReportData, coords: any) => {
+  const handleFinalAddMarker = async (data: ReportData, coords: any) => {
+    const brandNameLower = data.brand.trim().toLowerCase()
+
+    // 1. Check if brand exists in availableBrands
+    const isExistingBrand = availableBrands.some(
+      (b) => b.toLowerCase() === brandNameLower
+    )
+
+    // 2. Auto-populate toggles if existing for the "Preview"
+    if (isExistingBrand) {
+      const exactBrandKey = Object.keys(FUEL_BRAND_MAP).find(
+        (key) => key.toLowerCase() === brandNameLower
+      )
+
+      if (exactBrandKey) {
+        const brandConfig = FUEL_BRAND_MAP[exactBrandKey]
+        data.has_regular_gas = !!brandConfig.regular_gas
+        data.has_premium_gas = !!brandConfig.premium_gas
+        data.has_sports_gas = !!brandConfig.sports_gas
+        data.has_regular_diesel = !!brandConfig.regular_diesel
+        data.has_premium_diesel = !!brandConfig.premium_diesel
+      }
+    }
+
     if (!data.brand.trim() || !data.city.trim()) {
       Alert.alert("Missing Information", "Please provide both the Brand and the Municipality/City.")
       return
     }
-    const hasAtLeastOneFuel = 
-      data.has_regular_gas || 
-      data.has_premium_gas || 
-      data.has_sports_gas || 
-      data.has_regular_diesel || 
-      data.has_premium_diesel
 
-    if (!hasAtLeastOneFuel) {
-      Alert.alert(
-        "No Fuels Selected", 
-        "Please toggle at least one fuel type that is available at this station."
-      )
-      return
-    }
+    // 3. Validation: Only require marketing names if it's a NEW brand
+    if (!isExistingBrand) {
+      const hasAtLeastOneFuel = 
+        data.has_regular_gas || 
+        data.has_premium_gas || 
+        data.has_sports_gas || 
+        data.has_regular_diesel || 
+        data.has_premium_diesel
 
-    const activeTogglesWithoutNames = [
-      data.has_regular_gas && !data.regular_gas_name,
-      data.has_premium_gas && !data.premium_gas_name,
-      data.has_sports_gas && !data.sports_gas_name,
-      data.has_regular_diesel && !data.regular_diesel_name,
-      data.has_premium_diesel && !data.premium_diesel_name,
-    ].some(condition => condition === true)
+      if (!hasAtLeastOneFuel) {
+        Alert.alert("No Fuels Selected", "Please toggle at least one fuel type for this new brand.")
+        return
+      }
 
-    if (activeTogglesWithoutNames) {
-      Alert.alert("Missing Names", "Please provide a marketing name for the fuel types you enabled.")
-      return
+      const activeTogglesWithoutNames = [
+        data.has_regular_gas && !data.regular_gas_name,
+        data.has_premium_gas && !data.premium_gas_name,
+        data.has_sports_gas && !data.sports_gas_name,
+        data.has_regular_diesel && !data.regular_diesel_name,
+        data.has_premium_diesel && !data.premium_diesel_name,
+      ].some(condition => condition === true)
+
+      if (activeTogglesWithoutNames) {
+        Alert.alert("Missing Names", "Please provide a marketing name for the fuel types you enabled.")
+        return
+      }
     }
 
     setIsSubmitting(true)
+
+    // 4. Submit to Supabase
     const { error } = await supabase.from('user_reported_locations').insert([{
       reporter_id: loggedInUser?.id,
       latitude: coords.latitude,
       longitude: coords.longitude,
       brand: data.brand,
       city: data.city,
-      regular_gas_name: data.has_regular_gas ? data.regular_gas_name : null,
-      premium_gas_name: data.has_premium_gas ? data.premium_gas_name : null,
-      sports_gas_name: data.has_sports_gas ? data.sports_gas_name : null,
-      regular_diesel_name: data.has_regular_diesel ? data.regular_diesel_name : null,
-      premium_diesel_name: data.has_premium_diesel ? data.premium_diesel_name : null,
+      // Names are sent as null for existing brands to avoid DB config conflicts
+      regular_gas_name: (!isExistingBrand && data.has_regular_gas) ? data.regular_gas_name : null,
+      premium_gas_name: (!isExistingBrand && data.has_premium_gas) ? data.premium_gas_name : null,
+      sports_gas_name: (!isExistingBrand && data.has_sports_gas) ? data.sports_gas_name : null,
+      regular_diesel_name: (!isExistingBrand && data.has_regular_diesel) ? data.regular_diesel_name : null,
+      premium_diesel_name: (!isExistingBrand && data.has_premium_diesel) ? data.premium_diesel_name : null,
     }])
 
     if (error) {
@@ -498,8 +524,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       setReportModalVisible(false)
       setisAddMarkerMode(false)
       await fetchPendingStations()
+      
+      // Reset form
       setReportData({
-        brand: "", city: "", 
+        brand: "", 
+        city: "", 
         has_regular_gas: false, 
         has_premium_gas: false, 
         has_sports_gas: false, 
@@ -514,10 +543,29 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     }
     setIsSubmitting(false)
   }
+  useEffect(() => {
+    const brandName = reportData.brand.trim().toLowerCase()
+    if (!brandName) return
 
-  // Inside MapScreen component
+    // Find the matching brand key in the FUEL_BRAND_MAP object
+    const exactBrandKey = Object.keys(FUEL_BRAND_MAP).find(
+      (key) => key.toLowerCase() === brandName
+    )
+
+    if (exactBrandKey) {
+      const config = FUEL_BRAND_MAP[exactBrandKey]
+      setReportData((prev) => ({
+        ...prev,
+        has_regular_gas: !!config.regular_gas,
+        has_premium_gas: !!config.premium_gas,
+        has_sports_gas: !!config.sports_gas,
+        has_regular_diesel: !!config.regular_diesel,
+        has_premium_diesel: !!config.premium_diesel,
+      }))
+    }
+  }, [reportData.brand])
+
   // Inside MapScreen component, find the state declarations (around line 470)
-
   // 1. Updated states to handle objects instead of just strings
   const [municipalities, setMunicipalities] = useState<any[]>([]) 
   const [muniSearchQuery, setMuniSearchQuery] = useState("")
@@ -562,16 +610,30 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
   // Logic to filter brands and allow custom entry
   const filteredBrandOptions = useMemo(() => {
-    const filtered = availableBrands.filter(opt => 
-      opt.toLowerCase().includes(brandSearchQuery.toLowerCase())
-    )
+    const query = brandSearchQuery.trim().toLowerCase() // Using your brandSearchQuery
     
-    // If the typed brand doesn't exist in the list, offer it as a new option
-    if (brandSearchQuery.trim() !== "" && !filtered.includes(brandSearchQuery)) {
-      return [brandSearchQuery, ...filtered]
+    // Fix 2: Check if exact match exists in availableBrands (which is string[])
+    const exactMatchExists = availableBrands.some(
+      (b) => b.toLowerCase() === query
+    )
+
+    const filtered = availableBrands.filter((opt) =>
+      opt.toLowerCase().includes(query)
+    )
+
+    // Only show "Add..." if there's no exact match and query isn't empty
+    if (query !== "" && !exactMatchExists) {
+      // Note: If your dropdown expects strings, keep it as a string
+      return [`Add "${brandSearchQuery.trim()}"`, ...filtered]
     }
     return filtered
   }, [availableBrands, brandSearchQuery])
+  const isExistingBrand = useMemo(() => {
+    if (!reportData.brand) return false
+    return availableBrands.some(
+      (b) => b.toLowerCase() === reportData.brand.toLowerCase()
+    )
+  }, [reportData.brand, availableBrands])
 
 
   const hasVoted = useMemo(() => {
@@ -1104,7 +1166,6 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                           <Text size="sm" style={{ marginTop: 8, opacity: 0.5 }}>Fetching latest prices...</Text>
                         </View>
                       ) : selectedStation.fetchError ? (
-                        // ERROR STATE UI
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
                           <Icon icon="information" color={colors.palette.angry500} size={40} />
                           <Text 
@@ -1122,7 +1183,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
                                 return (
                                   <View key={key} style={{ width: "33.33%", alignItems: "center" }}>
-                                    <Text style={$fuelTypeLabel}>{config[key]}</Text>
+                                    <Text style={$fuelTypeLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{config[key]}</Text>
                                     
                                     {/* Toggle between Input for Reporting and Text for viewing */}
                                     {isReporting ? (
@@ -1499,7 +1560,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[$pendingFormButtons, { backgroundColor: colors.palette.primary500 }]} 
-                onPress={() => handleFinalSubmit(reportData, tempMarker)}
+                onPress={() => handleFinalAddMarker(reportData, tempMarker)}
               >
                 <Text text="Submit" style={{ color: 'white' }} />
               </TouchableOpacity>
