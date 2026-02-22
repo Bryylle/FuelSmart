@@ -346,7 +346,7 @@ const $priceDashboard: ThemedStyle<ViewStyle> = ({ colors }) => ({
 
 const $priceGridContainer: ThemedStyle<ViewStyle> = () => ({ flexDirection: "row" })
 const $dataEntry: ThemedStyle<ViewStyle> = () => ({ width: "33.33%", alignItems: "center" })
-const $verticalDivider: ThemedStyle<ViewStyle> = () => ({ position: 'absolute', right: 0, height: '60%', width: 1, backgroundColor: "#D1D1D6" })
+const $verticalDivider: ThemedStyle<ViewStyle> = () => ({ position: 'absolute', right: 0, height: '80%', width: 1, backgroundColor: "#D1D1D6" })
 const $dataLabel: ThemedStyle<TextStyle> = () => ({ color: "#8E8E93", fontSize: 10, fontWeight: "600" })
 const $dataValue: ThemedStyle<TextStyle> = () => ({ fontSize: 18, fontWeight: "700", marginTop: 2 })
 

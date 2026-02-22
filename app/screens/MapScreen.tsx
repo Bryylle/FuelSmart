@@ -125,8 +125,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
   const [loggedInUser, setLoggedInUser] = useState<AppUser | null>(null)
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null)
+  const [availableBrands, setAvailableBrands] = useState<string[]>([])
   useEffect(() => {
-    const load = async () => {
+    const load_user_favorites = async () => {
       const { data: authData, error: authError } = await supabase.auth.getUser()
       if (authError || !authData.user) return
 
@@ -145,6 +146,19 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         setFavorites(favs) 
       }
     }
+    const load_available_brands = async () => {
+      const { data, error } = await supabase
+        .from("fuel_stations")
+        .select("brand")
+
+      if (data && !error) {
+        const uniqueBrands = Array.from(
+          new Set(data.map((s) => s.brand).filter(Boolean))
+        ).sort()
+        
+        setAvailableBrands(uniqueBrands)
+      }
+    }
     const initialize = async () => {
       let { status } = await Location.requestForegroundPermissionsAsync()
       if (status === 'granted') {
@@ -155,9 +169,12 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         })
       }
     }
-    load()
+    load_user_favorites()
+    load_available_brands()
     initialize()
   }, [])
+
+
   
 
   // --MAP
@@ -327,13 +344,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     const { data } = await supabase.from('user_reported_locations').select('*')
     if (data) setPendingStations(data)
   }, [])
-  // Inside MapScreen component
   useFocusEffect(
     useCallback(() => {
-      // Refresh regular stations
       fetchStations(region)
-      
-      // Refresh pending markers (orange ones)
       fetchPendingStations() 
 
       return () => {
@@ -601,9 +614,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     setActiveDistance(tempDistance)
     setIsFilterVisible(false) 
   }
-  const availableBrands = useMemo(() => 
-    Array.from(new Set(stations.map(s => s.brand))).filter(Boolean).sort(), 
-  [stations])
+  // const availableBrands = useMemo(() => 
+  //   Array.from(new Set(stations.map(s => s.brand))).filter(Boolean).sort(), 
+  // [stations])
 
   const filteredStations = useMemo(() => {
     return stations.filter((s) => {
@@ -876,8 +889,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
               </>
               <>
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                  <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
-                  <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
+                  <TouchableOpacity style={[$pendingFormButtons, { backgroundColor: '#F2F2F7' }]} onPress={handleCancelFilters}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={[$pendingFormButtons, { backgroundColor: colors.palette.primary500 }]} onPress={handleApplyAll}><Text style={{ color: "white", fontWeight: "bold" }}>Apply Filters</Text></TouchableOpacity>
                 </View>
               </>
             </Animated.View>
@@ -905,8 +918,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
               ))}
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity style={[$modalBtn, { backgroundColor: '#F2F2F7' }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'white', fontWeight: 'bold' }}>Apply</Text></TouchableOpacity>
+              <TouchableOpacity style={[$pendingFormButtons, { backgroundColor: '#F2F2F7' }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'black' }}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[$pendingFormButtons, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsBrandPickerVisible(false)}><Text style={{ color: 'white', fontWeight: 'bold' }}>Apply</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -930,7 +943,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       <Text weight="bold" size="md">{selectedStation.brand}</Text>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
                         <Text size="sm" style={{ opacity: 0.6 }}>
-                          {selectedStation.city}{selectedStation.updated_at ? " • " + formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : "Recent"}
+                          {selectedStation.city}{selectedStation.updated_at ? " • " + formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : " • Recent"}
                         </Text>
                         
                         {selectedStation.last_updated_by ? (
@@ -975,12 +988,12 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       </View>
                       
                       {loggedInUser?.id === selectedStation.reporter_id ? (
-                        <View style={{ marginTop: 20, gap: 10 }}>
-                          <View style={{ alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12 }}>
-                            <Text text="Waiting for others to verify your report..." size="xxs" style={{ opacity: 0.5 }} />
+                        <View style={{ marginTop: 10, gap: 10 }}>
+                          <View style={{ alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12, justifyContent: "flex-start" }}>
+                            <Text text="Waiting for others to verify your report..." size="xs" style={{ opacity: 0.5 }} />
                           </View>
                           <TouchableOpacity 
-                            style={[$modalBtn, { 
+                            style={[$pendingFormButtons, { 
                               backgroundColor: colors.palette.angry500, 
                               flexDirection: 'row', 
                               justifyContent: 'center', // Centers the text horizontally
@@ -998,11 +1011,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                         </View>
                       ) : (
                         <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-                          <TouchableOpacity style={[$modalBtn, { flex: 1, backgroundColor: colors.palette.primary500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}>
-                            <Text text="Confirm" style={{ color: 'white', fontWeight: 'bold' }} />
+                          <TouchableOpacity style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.secondary500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}>
+                            <Text text="Deny" style={{ color: 'white', fontWeight: 'bold' }} />
                           </TouchableOpacity>
-                          <TouchableOpacity style={[$modalBtn, { flex: 1, backgroundColor: colors.palette.angry500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}>
-                            <Text text="Incorrect" style={{ color: 'white', fontWeight: 'bold' }} />
+                          <TouchableOpacity style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.primary500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}>
+                            <Text text="Confirm" style={{ color: 'white', fontWeight: 'bold' }} />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1241,11 +1254,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
             </ScrollView>
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity style={$modalBtn} onPress={() => setReportModalVisible(false)}>
+              <TouchableOpacity style={$pendingFormButtons} onPress={() => setReportModalVisible(false)}>
                 <Text text="Cancel" />
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[$modalBtn, { backgroundColor: colors.palette.primary500 }]} 
+                style={[$pendingFormButtons, { backgroundColor: colors.palette.primary500 }]} 
                 onPress={() => handleFinalSubmit(reportData, tempMarker)}
               >
                 <Text text="Submit" style={{ color: 'white' }} />
@@ -1359,7 +1372,7 @@ const $fuelTag: ViewStyle = {
   borderWidth: 1,
   borderColor: colors.palette.primary500,
 }
-const $modalBtns: ViewStyle = {
+const $pendingFormButtonss: ViewStyle = {
   padding: 12,
   borderRadius: 8,
   alignItems: 'center',
@@ -1562,7 +1575,7 @@ const $brandModalHeader: ViewStyle = { flexDirection: 'row', justifyContent: 'sp
 const $brandOption: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: HAIRLINE, borderBottomColor: '#EEE' }
 const $checkbox: ViewStyle = { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: '#D1D1D6', justifyContent: 'center', alignItems: 'center' }
 const $checkboxActive: ViewStyle = { backgroundColor: colors.palette.primary500, borderColor: colors.palette.primary500 }
-const $modalBtn: ViewStyle = { flex: 1, paddingVertical: 12, borderRadius: 25, alignItems: 'center' }
+const $pendingFormButtons: ViewStyle = { flex: 1, paddingVertical: 12, borderRadius: 25, alignItems: 'center' }
 
 const $userInfoCard: ViewStyle = { backgroundColor: 'white', width: '90%', borderRadius: 24, padding: 24, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }
 const $feedbackRowExpanded: ViewStyle = { flexDirection: 'row', width: '100%', borderTopWidth: HAIRLINE, borderTopColor: '#EEE', paddingTop: 10, alignItems: 'center' }
