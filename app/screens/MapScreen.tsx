@@ -501,6 +501,63 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     setIsSubmitting(false)
   }
 
+  // Inside MapScreen component
+  // Inside MapScreen component, find the state declarations (around line 470)
+
+  // 1. Updated states to handle objects instead of just strings
+  const [municipalities, setMunicipalities] = useState<any[]>([]) 
+  const [muniSearchQuery, setMuniSearchQuery] = useState("")
+  const [isMuniPickerVisible, setIsMuniPickerVisible] = useState(false)
+  const [isLoadingMuni, setIsLoadingMuni] = useState(false)
+
+  useEffect(() => {
+    const fetchPHMunicipalities = async () => {
+      setIsLoadingMuni(true)
+      try {
+        // Fetching from the official PSGC GitLab mirror
+        const response = await fetch("https://psgc.gitlab.io/api/cities-municipalities.json")
+        const data = await response.json()
+        
+        // Keep the whole object so we have muni.code for the 'key' prop
+        setMunicipalities(data) 
+      } catch (error) {
+        console.error("Error fetching PSGC data:", error)
+      } finally {
+        setIsLoadingMuni(false)
+      }
+    }
+    fetchPHMunicipalities()
+  }, [])
+
+  // 2. Optimized LAZY Filter:
+  // This prevents the app from crashing by not rendering anything 
+  // until the user actually starts searching.
+  const filteredMuniOptions = useMemo(() => {
+    // Return empty if search is too short (saves memory/performance)
+    if (muniSearchQuery.trim().length < 2) return []
+
+    return municipalities
+      .filter(m => 
+        m.name.toLowerCase().includes(muniSearchQuery.toLowerCase())
+      )
+      .slice(0, 25) // Limit to top 25 results to keep the UI smooth
+  }, [municipalities, muniSearchQuery])
+  // Inside MapScreen component
+  const [brandSearchQuery, setBrandSearchQuery] = useState("")
+  const [isAddStationBrandPickerVisible, setIsAddStationBrandPickerVisible] = useState(false)
+
+  // Logic to filter brands and allow custom entry
+  const filteredBrandOptions = useMemo(() => {
+    const filtered = availableBrands.filter(opt => 
+      opt.toLowerCase().includes(brandSearchQuery.toLowerCase())
+    )
+    
+    // If the typed brand doesn't exist in the list, offer it as a new option
+    if (brandSearchQuery.trim() !== "" && !filtered.includes(brandSearchQuery)) {
+      return [brandSearchQuery, ...filtered]
+    }
+    return filtered
+  }, [availableBrands, brandSearchQuery])
   const [isVoting, setIsVoting] = useState(false)
   const handleVerifyOrDenyPendingMarker = async (reportId: string, isConfirm: boolean) => {
     if (!loggedInUser?.id || isVoting) return
@@ -1231,18 +1288,173 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
           <View style={[$brandModalContent, { width: '90%' }]}>
             <Text preset="subheading" text="Report New Station" />
             <ScrollView style={{ maxHeight: 450, marginTop: 10 }} showsVerticalScrollIndicator={false}>
-              <TextInput 
-                placeholder="Brand (e.g. Shell)" 
-                style={$filterInput} 
-                value={reportData.brand}
-                onChangeText={(t) => setReportData({ ...reportData, brand: t })} 
-              />
-              <TextInput 
-                placeholder="Municipality/City" 
-                style={$filterInput} 
-                value={reportData.city}
-                onChangeText={(t) => setReportData({ ...reportData, city: t })} 
-              />
+              {/* BRAND DROPDOWN */}
+              <Text preset="formLabel" text="Brand" />
+              <TouchableOpacity 
+                style={$brandPickerTrigger} 
+                onPress={() => setIsAddStationBrandPickerVisible(true)}
+              >
+                <Text text={reportData.brand || "Select or Type Brand"} />
+                <Icon icon="caretRight" size={20} />
+              </TouchableOpacity>
+              <Modal 
+                visible={isAddStationBrandPickerVisible} 
+                transparent 
+                animationType="slide"
+              >
+                <View style={$brandModalOverlay}>
+                  <View style={$brandModalContent}>
+                    <View style={$searchBrandModalHeader}>
+                      <Text weight="bold">Select Brand</Text>
+                      <TouchableOpacity onPress={() => setIsAddStationBrandPickerVisible(false)}>
+                        <Icon icon="close" size={24} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={$searchBrandContainer}>
+                      <Icon icon="search" size={20} color="#8E8E93" />
+                      <TextInput
+                        style={$searchBrandInput}
+                        placeholder="Search or type new brand..."
+                        value={brandSearchQuery}
+                        onChangeText={setBrandSearchQuery}
+                        autoCapitalize="words"
+                      />
+                    </View>
+
+                    <ScrollView style={{ maxHeight: 400 }}>
+                      {filteredBrandOptions.map((brand) => {
+                        const isNew = !availableBrands.includes(brand)
+                        return (
+                          <TouchableOpacity 
+                            key={brand} 
+                            style={$brandOption} 
+                            onPress={() => {
+                              setReportData({ ...reportData, brand })
+                              setIsAddStationBrandPickerVisible(false)
+                              setBrandSearchQuery("")
+                            }}
+                          >
+                            <Text style={{ color: isNew ? colors.palette.primary500 : "black" }}>
+                              {brand} {isNew ? "(Add New)" : ""}
+                            </Text>
+                            {reportData.brand === brand && <Icon icon="check" size={20} color={colors.palette.primary500} />}
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </ScrollView>
+                  </View>
+                </View>
+              </Modal>
+              {/* MUNICIPALITY DROPDOWN */}
+              {/* --- 1. THE TRIGGER FIELD (Place this in your 'Add Station' Form) --- */}
+              <Text preset="formLabel" text="Municipality/City" style={{ marginBottom: 4 }} />
+              <TouchableOpacity 
+                activeOpacity={0.7}
+                style={$selectTrigger} 
+                onPress={() => setIsMuniPickerVisible(true)}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Icon icon="search" size={20} color={colors.palette.neutral500} style={{ marginRight: 8 }} />
+                  <Text 
+                    style={{ color: reportData.city ? colors.text : colors.palette.neutral400 }} 
+                    text={reportData.city || "Select Municipality"} 
+                  />
+                </View>
+                <Icon icon="caretRight" size={18} color={colors.palette.neutral400} />
+              </TouchableOpacity>
+
+
+              {/* --- 2. THE MODAL (Place this near your other Modals) --- */}
+              <Modal 
+                visible={isMuniPickerVisible} 
+                transparent 
+                animationType="slide"
+              >
+                <View style={$brandModalOverlay}>
+                  <View style={$brandModalContent}>
+                    
+                    {/* Header */}
+                    <View style={$searchBrandModalHeader}>
+                      <Text weight="bold" size="md">Select Municipality</Text>
+                      <TouchableOpacity onPress={() => {
+                        setIsMuniPickerVisible(false)
+                        setMuniSearchQuery("")
+                      }}>
+                        <Icon icon="close" size={24} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Improved Search Input */}
+                    <View style={$searchWrapper}>
+                      <View style={$searchBarInner}>
+                        <Icon icon="search" size={20} color={colors.palette.neutral500} />
+                        <TextInput
+                          style={$searchInputField}
+                          placeholder="Search city or town..."
+                          placeholderTextColor={colors.palette.neutral400}
+                          value={muniSearchQuery}
+                          onChangeText={setMuniSearchQuery}
+                          autoCapitalize="words"
+                          autoFocus={true}
+                        />
+                        {muniSearchQuery.length > 0 && (
+                          <TouchableOpacity onPress={() => setMuniSearchQuery("")}>
+                            <Icon icon="close" size={18} color={colors.palette.neutral500} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Results List */}
+                    <ScrollView 
+                      style={{ maxHeight: 450, marginTop: 8 }} 
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {muniSearchQuery.length < 2 ? (
+                        <View style={{ padding: 40, alignItems: 'center' }}>
+                          <Icon icon="search" size={40} color={colors.palette.neutral300} />
+                          <Text 
+                            style={{ color: colors.palette.neutral500, marginTop: 8, textAlign: 'center' }} 
+                            text="Search by typing at least 2 letters of the city name" 
+                          />
+                        </View>
+                      ) : filteredMuniOptions.length > 0 ? (
+                        filteredMuniOptions.map((muni) => (
+                          <TouchableOpacity 
+                            key={muni.code} // FIXED: Unique PSGC Code
+                            style={$resultItem} 
+                            onPress={() => {
+                              setReportData({ ...reportData, city: muni.name })
+                              setIsMuniPickerVisible(false)
+                              setMuniSearchQuery("")
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text weight="medium" text={muni.name} />
+                              <Text 
+                                size="xxs" 
+                                style={{ color: colors.palette.neutral500 }} 
+                                text={muni.provinceName || muni.regionName || "Philippines"} 
+                              />
+                            </View>
+                            {reportData.city === muni.name && (
+                              <View style={$checkCircle}>
+                                <Icon icon="check" size={12} color="white" />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        ))
+                      ) : (
+                        <View style={{ padding: 40, alignItems: 'center' }}>
+                          <Text style={{ color: colors.palette.neutral500 }}>No results found.</Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  </View>
+                </View>
+              </Modal>
               
               <Text text="Available Fuel Types" weight="bold" style={{ marginTop: 20, marginBottom: 5 }} />
               
@@ -1305,6 +1517,82 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 }
 
 // #region STYLES
+const $selectTrigger: ViewStyle = {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: colors.palette.neutral100,
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  height: 56,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral200,
+  marginBottom: 16,
+}
+
+const $searchWrapper: ViewStyle = {
+  paddingBottom: 16,
+  borderBottomWidth: 1,
+  borderBottomColor: colors.palette.neutral200,
+}
+
+const $searchBarInner: ViewStyle = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: colors.palette.neutral100,
+  borderRadius: 10,
+  paddingHorizontal: 12,
+  height: 48,
+}
+
+const $searchInputField: TextStyle = {
+  flex: 1,
+  marginLeft: 8,
+  fontSize: 16,
+  color: colors.text,
+}
+
+const $resultItem: ViewStyle = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 14,
+  borderBottomWidth: 1,
+  borderBottomColor: colors.palette.neutral100,
+}
+
+const $checkCircle: ViewStyle = {
+  width: 22,
+  height: 22,
+  borderRadius: 11,
+  backgroundColor: colors.palette.primary500,
+  justifyContent: 'center',
+  alignItems: 'center',
+}
+const $searchBrandModalHeader: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
+const $searchBrandContainer: ViewStyle = { 
+  flexDirection: 'row', 
+  alignItems: 'center', 
+  backgroundColor: '#F2F2F7', 
+  borderRadius: 10, 
+  paddingHorizontal: 10, 
+  marginBottom: 16, 
+  height: 45 
+}
+
+const $searchBrandInput: TextStyle = { 
+  flex: 1, 
+  height: '100%', 
+  marginLeft: 8, 
+  color: 'black' 
+}
+
+const $searchBrandOption: ViewStyle = {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  paddingVertical: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: '#F2F2F7'
+}
 const $eWalletGroup: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
