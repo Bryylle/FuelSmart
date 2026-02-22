@@ -220,8 +220,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   const handleMarkerPress = async (stationId: string) => {
     const localStation = stations.find(s => s.id === stationId)
     
+    // Set initial loading state from local data
     if (localStation) {
-      setSelectedStation({ ...localStation, isLoading: true })
+      setSelectedStation({ ...localStation, isLoading: true, fetchError: false })
     }
 
     try {
@@ -229,18 +230,31 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         .from("fuel_stations")
         .select(`*, last_updated_by_profile:users!last_updated_by (id, full_name, b_show_name)`)
         .eq("id", stationId)
-        .single()
+        .maybeSingle() // Use maybeSingle to handle deleted records gracefully
 
-      if (error) throw error
+      // If record is missing (deleted) or there's a DB error
+      if (error || !data) {
+        setSelectedStation(prev => ({ 
+          ...(prev || localStation), 
+          isLoading: false, 
+          fetchError: true 
+        }))
+        return
+      }
 
       setSelectedStation({
         ...data,
         last_updated_by: data.last_updated_by_profile,
-        isLoading: false 
+        isLoading: false,
+        fetchError: false
       })
     } catch (e) {
       console.error("Fetch Error:", e)
-      setSelectedStation(prev => prev ? { ...prev, isLoading: false } : null)
+      setSelectedStation(prev => ({ 
+        ...(prev || localStation), 
+        isLoading: false, 
+        fetchError: true 
+      }))
     }
   }
 
@@ -558,6 +572,14 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     }
     return filtered
   }, [availableBrands, brandSearchQuery])
+
+
+  const hasVoted = useMemo(() => {
+    if (!selectedStation || !loggedInUser) return false
+    const v = selectedStation.verifiers || []
+    const d = selectedStation.deniers || []
+    return v.includes(loggedInUser.id) || d.includes(loggedInUser.id)
+  }, [selectedStation, loggedInUser])
   const [isVoting, setIsVoting] = useState(false)
   const handleVerifyOrDenyPendingMarker = async (reportId: string, isConfirm: boolean) => {
     if (!loggedInUser?.id || isVoting) return
@@ -570,44 +592,26 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     })
 
     if (error) {
-      Alert.alert("Error", error.message)
+      Alert.alert("Error", "Something went wrong")
+      console.log("Error", error.message)
       setIsVoting(false)
       return
     }
+    Alert.alert("Your verification has been recorded.")
 
-    if (isConfirm) {
-      if (data === 'STATION_PROMOTED') {
-        Alert.alert("Success!", "Station verified and added to the map!")
-      } else {
-        Alert.alert("Confirmed", "Your verification has been recorded.")
+    if (data === 'VERIFICATION_ADDED' || data === 'DENIAL_ADDED') {
+    setSelectedStation((prev) => {
+      if (!prev) return null
+      return {
+        ...prev,
+        verifiers: isConfirm ? [...(prev.verifiers || []), loggedInUser.id] : prev.verifiers,
+        deniers: !isConfirm ? [...(prev.deniers || []), loggedInUser.id] : prev.deniers,
       }
-    } else {
-      if (data === 'REPORT_DELETED_BY_DENIALS') {
-        Alert.alert("Report Removed", "This station was deleted due to multiple denials.")
-      } else {
-        Alert.alert(
-          "Incorrect Details?",
-          "Would you like to provide the correct details for this location instead?",
-          [
-            { text: "No", style: "cancel" },
-            { 
-              text: "Yes, Correct it", 
-              onPress: async () => {
-                if (!selectedStation) return;
-                const eligible = await toggleAddMarkerMode()
-                setTempMarker({ 
-                  ...region, 
-                  latitude: Number(selectedStation.latitude), 
-                  longitude: Number(selectedStation.longitude) 
-                })
-                setReportModalVisible(true)
-              }
-            }
-          ]
-        )
-      }
-    }
+    })
+  }
+
     setSelectedStation(null)
+    fetchStations(region)
     fetchPendingStations()
     setIsVoting(false)
   }
@@ -1022,7 +1026,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                     </View>
 
                     {!selectedStation.isPending && (
-                      <TouchableOpacity onPress={toggleFavorite} style={$favoriteBtn}>
+                      <TouchableOpacity onPress={toggleFavorite} style={[$favoriteBtn, selectedStation.fetchError && { opacity: 0.3 }]} disabled={selectedStation.fetchError}>
                         <Icon icon="star" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
                       </TouchableOpacity>
                     )}
@@ -1067,13 +1071,28 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                           </TouchableOpacity>
                         </View>
                       ) : (
-                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-                          <TouchableOpacity style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.secondary500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}>
-                            <Text text="Deny" style={{ color: 'white', fontWeight: 'bold' }} />
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.primary500 }]} onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}>
-                            <Text text="Confirm" style={{ color: 'white', fontWeight: 'bold' }} />
-                          </TouchableOpacity>
+                        <View style={{ gap: 10, marginTop: 10 }}>
+                          {hasVoted ? (
+                            <View style={{ alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12, justifyContent: "flex-start" }}>
+                              <Text text="Your confirmation has been saved" size="xs" style={{ opacity: 0.5 }} />
+                            </View>
+                          ) : (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                              <TouchableOpacity 
+                                style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.secondary500  }]} 
+                                onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}
+                              >
+                                <Text style={{ textAlign: 'center', color: "white", fontWeight: "bold" }}>Deny</Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity 
+                                style={[$pendingFormButtons, { flex: 1, backgroundColor: colors.palette.primary500 }]} 
+                                onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}
+                              >
+                                <Text style={{ textAlign: 'center', color: "white", fontWeight: "bold" }}>Confirm</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
@@ -1083,6 +1102,15 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                           <ActivityIndicator size="large" color={colors.palette.primary500} />
                           <Text size="sm" style={{ marginTop: 8, opacity: 0.5 }}>Fetching latest prices...</Text>
+                        </View>
+                      ) : selectedStation.fetchError ? (
+                        // ERROR STATE UI
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                          <Icon icon="information" color={colors.palette.angry500} size={40} />
+                          <Text 
+                            style={{ textAlign: 'center', marginTop: 10, color: colors.palette.angry500 }} 
+                            text="Sorry, there is a problem in this location." 
+                          />
                         </View>
                       ) : (
                         <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
@@ -1134,8 +1162,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                         </>
                       ) : (
                         <>
-                          <TouchableOpacity style={$directionsButton} onPress={showDirections}><Icon icon="directions" color="white" size={24} /><Text style={$buttonText}>Directions</Text></TouchableOpacity>
-                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={() => setIsReporting(true)}><Icon icon="priceUpdate" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
+                          <TouchableOpacity style={[$directionsButton, selectedStation.fetchError && { opacity: 0.5, backgroundColor: '#ccc' }]} disabled={selectedStation.fetchError} onPress={showDirections}><Icon icon="directions" color="white" size={24} /><Text style={$buttonText}>Directions</Text></TouchableOpacity>
+                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }, selectedStation.fetchError && { opacity: 0.5, backgroundColor: '#ccc' }]} disabled={selectedStation.fetchError} onPress={() => setIsReporting(true)}><Icon icon="priceUpdate" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
                         </>
                       )}
                     </View>
