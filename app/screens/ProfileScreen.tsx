@@ -24,10 +24,9 @@ import type { AppStackParamList } from "@/navigators/navigationTypes"
 import { supabase } from "@/services/supabase" 
 
 const HAIRLINE = 1 / PixelRatio.get()
-
-const icon_medal_gold = require("@assets/icons/download/medal-gold.png")
-const icon_medal_silver = require("@assets/icons/download/medal-silver.png")
-const icon_medal_bronze = require("@assets/icons/download/medal-bronze.png")
+const ICON_MEDAL_GOLD = require("@assets/icons/download/medal_gold.png")
+const ICON_MEDAL_SILVER = require("@assets/icons/download/medal_silver.png")
+const ICON_MEDAL_BRONZE = require("@assets/icons/download/medal_bronze.png")
 
 export const ProfileScreen: FC = function ProfileScreen() {
   const { setThemeContextOverride, themeContext, themed } = useAppTheme()
@@ -183,9 +182,9 @@ export const ProfileScreen: FC = function ProfileScreen() {
                   {userData?.no_contributions > 0 && (
                     <>
                       <Image source={
-                        userData?.no_contributions < 50 ? icon_medal_bronze : 
-                        userData?.no_contributions < 100 ? icon_medal_silver :
-                        /*userData?.no_contributions >  100 ? */ icon_medal_gold
+                        userData?.no_contributions < 50 ? ICON_MEDAL_BRONZE : 
+                        userData?.no_contributions < 100 ? ICON_MEDAL_SILVER :
+                        /*userData?.no_contributions >  100 ? */ ICON_MEDAL_GOLD
                         } style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
                     </>
                   )}
@@ -202,18 +201,18 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
           <Text preset="formLabel" style={$sectionHeader}>ACCOUNT</Text>
           <View style={themed($insetGroup)}>
-            <ListItem text="Account Settings" onPress={() => navigation.navigate("AccountSettings")} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Account Settings" onPress={() => navigation.navigate("AccountSettings")} rightIcon="caret_right" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
-            <ListItem text="Privacy Policy" onPress={() => navigation.navigate("PrivacyPolicy")} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Privacy Policy" onPress={() => navigation.navigate("PrivacyPolicy")} rightIcon="caret_right" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
-            <ListItem text="Terms And Conditions" onPress={() => navigation.navigate("TermsAndConditions")} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Terms And Conditions" onPress={() => navigation.navigate("TermsAndConditions")} rightIcon="caret_right" style={themed($listItemStyle)} />
           </View>
 
           <Text preset="formLabel" style={$sectionHeader}>APP SETTINGS</Text>
           <View style={themed($insetGroup)}>
-            <ListItem text="Map Testing" onPress={() => navigation.navigate("MapTest")} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Map Testing" onPress={() => navigation.navigate("MapTest")} rightIcon="caret_right" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
-            <ListItem text="Preferred Stations" onPress={openFuelPicker} rightIcon="caretRight" style={themed($listItemStyle)} />
+            <ListItem text="Preferred Stations" onPress={openFuelPicker} rightIcon="caret_right" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
             <ListItem text="Dark Mode" RightComponent={<Switch value={themeContext === "dark"} onValueChange={toggleTheme} />} style={themed($listItemStyle)} />
             <View style={themed($separator)} />
@@ -227,7 +226,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
                 <ListItem 
                   text="Update Oil Price Forecast" 
                   onPress={() => handleAdminPress("UpdateOilPriceForecast")} 
-                  rightIcon="caretRight" 
+                  rightIcon="caret_right" 
                   style={themed($listItemStyle)} 
                 />
               </View>

@@ -267,16 +267,13 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
           <TouchableOpacity 
             onPress={onComputeTripPress} 
             style={[themed($ctaButton), {flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center"}]}
-            // RightAccessory={(props) => (
-            //   <Icon icon="caretRight" size={18} color={colors.background} {...props} />
-            // )}
           >
             <Text 
               preset="bold" 
               style={themed($ctaButtonText)} 
               tx="demoShowroomScreen:planTripCta" 
             />
-            <Icon icon="caretRight" size={20} color={colors.background}/>
+            <Icon icon="caret_right" size={20} color={colors.background}/>
           </TouchableOpacity>
         </SectionCard>
 

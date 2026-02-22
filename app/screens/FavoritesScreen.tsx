@@ -32,6 +32,10 @@ import { delay } from "@/utils/delay"
 import { supabase } from "@/services/supabase"
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
 
+const ICON_MEDAL_GOLD = require("@assets/icons/download/medal_gold.png")
+const ICON_MEDAL_SILVER = require("@assets/icons/download/medal_silver.png")
+const ICON_MEDAL_BRONZE = require("@assets/icons/download/medal_bronze.png")
+
 const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
   if (!fullName) return "Anonymous"
   if (bShowName) return fullName
@@ -169,7 +173,13 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
                     <Text preset="subheading" weight="bold" style={{ color: "black", flexShrink: 1 }} numberOfLines={1}>
                       {getDisplayName(selectedUser?.full_name, selectedUser?.b_show_name ?? true)}
                     </Text>
-                    <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
+                    <Image 
+                      source={
+                          selectedUser?.no_contributions < 50 ? ICON_MEDAL_BRONZE : 
+                          selectedUser?.no_contributions < 100 ? ICON_MEDAL_SILVER :
+                          /*userData?.no_contributions >  100 ? */ ICON_MEDAL_GOLD
+                      }  style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" 
+                    />
                   </View>
                   <Text style={{ color: "#666", fontSize: 14 }}>Rank: Gold Contributor</Text>
                 </View>
@@ -208,7 +218,6 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
   }
 
   const animatedStyle = useAnimatedStyle(() => ({ height: height.value, overflow: "hidden" }))
-  const getRankColor = (contributions: number = 0) => contributions > 70 ? "#FFD700" : "#4CD964"
 
   return (
     <Card
@@ -219,7 +228,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
           <View style={$titleRow}>
             <Text weight="bold" size="md" style={$stationName}>{station.brand}</Text>
             <TouchableOpacity onPress={onUnfavorite} style={$topRightButton}>
-              <Icon icon="heart" size={30} color={colors.palette.primary500} />
+              <Icon icon="star" size={30} color={colors.palette.primary500} />
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -228,7 +237,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
             </Text>
             {station.users ?  (
               <TouchableOpacity onPress={() => onPressUser(station.users)}>
-                <Text size="xxs" style={[{ color: getRankColor(station.users.no_contributions), fontWeight: 'bold' }, $metadataText]}>
+                <Text size="xxs" style={[{ color: "black", fontWeight: 'bold' }, $metadataText]}>
                   {" "}by {getDisplayName(station.users.full_name, station.users.b_show_name)}
                 </Text>
               </TouchableOpacity>
@@ -262,7 +271,7 @@ const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onU
               <Icon icon="directions" color="white" size={20} /><Text style={$buttonText}>Directions</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={() => Alert.alert("Update", "Navigate to Map to update prices.")}>
-              <Icon icon="priceUpdate" color="white" size={20} /><Text style={$buttonText}>Update</Text>
+              <Icon icon="price_update" color="white" size={20} /><Text style={$buttonText}>Update</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>

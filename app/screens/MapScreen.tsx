@@ -1,5 +1,5 @@
 import React, { FC, useMemo, useState, useRef, useEffect, useCallback } from "react"
-import { ActivityIndicator, Platform, Pressable, View, ViewStyle, TextStyle, Image, ImageStyle, ScrollView, TouchableOpacity, PixelRatio, Linking, Modal, Alert, KeyboardAvoidingView, TextInput, StyleSheet, } from "react-native"
+import { ActivityIndicator, Platform, Pressable, View, ViewStyle, TextStyle, Image, ScrollView, TouchableOpacity, PixelRatio, Linking, Modal, Alert, KeyboardAvoidingView, TextInput, StyleSheet, } from "react-native"
 import * as Clipboard from "expo-clipboard"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
@@ -18,12 +18,19 @@ import { initFuelMappings, FUEL_BRAND_MAP } from "../utils/fuelMappings"
 import Slider from '@react-native-community/slider'
 import * as Location from "expo-location"
 import { useFocusEffect } from "@react-navigation/native"
+import { spacing } from "@/theme/spacing"
 
+import GCashLogo from "@assets/icons/gcash.svg"
+import MayaLogo from "@assets/icons/maya.svg"
 // CONSTANTS
+const ICON_MEDAL_GOLD = require("@assets/icons/download/medal_gold.png")
+const ICON_MEDAL_SILVER = require("@assets/icons/download/medal_silver.png")
+const ICON_MEDAL_BRONZE = require("@assets/icons/download/medal_bronze.png")
+const ICON_FUEL_MARKER     = require("@assets/icons/marker_isolated.png")
+
 const ZOOM_THRESHOLD  = 0.05 
 const DEBOUNCE_TIME   = 800
 const MAX_STATIONS    = 150
-const FUEL_MARKER     = require("@assets/icons/marker_isolated.png")
 const HAIRLINE        = 1 / PixelRatio.get()
 const Z_INDEX_SEARCH_BAR  = 10
 const Z_INDEX_STATION_DETAIL = 9
@@ -34,12 +41,6 @@ const MAP_STYLE = [
   { featureType: "poi", elementType: "all", stylers: [{ visibility: "off" }] },
   { featureType: "transit", elementType: "all", stylers: [{ visibility: "off" }] }
 ]
-
-// const GCashLogo = require("@assets/icons/gcash.svg")
-// const MayaLogo = require("@assets/icons/maya.svg")
-import GCashLogo from "@assets/icons/gcash.svg"
-import MayaLogo from "@assets/icons/maya.svg"
-import { spacing } from "@/theme/spacing"
 
 interface Contributor {
   id: string;
@@ -282,8 +283,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     }
   }
 
+  const priceInputsRef = useRef<Record<string, string>>({});
   const [isReporting, setIsReporting] = useState(false)
-  const [reportPrices, setReportPrices] = useState<Record<string, string>>({})
   const handleUpdatePrice = async () => {
     if (!selectedStation || !loggedInUser) {
       Alert.alert("Error", "User or Station information is missing.");
@@ -291,13 +292,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     }
 
     const getValidPrice = (key: string) => {
-      const input = reportPrices[key];
-      
-      if (typeof input === "string" && input.trim() !== "") {
+      const input = priceInputsRef.current[key];
+      if (input && input.trim() !== "") {
         const parsed = parseFloat(input);
         if (!isNaN(parsed)) return parsed;
       }
-      
       return Number(selectedStation[key]) || 0;
     };
 
@@ -318,7 +317,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       } else {
         Alert.alert("Success", "Station prices updated!");
         setIsReporting(false);
-        setReportPrices({});
+        priceInputsRef.current = {};
         setSelectedStation(null);
       }
     } catch (err) {
@@ -820,15 +819,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
   const isAnimating = useRef(false)
   const is3D = useRef(false)
   const toggle3DMapView = async () => {
-    // Prevent overlapping animations
     if (!mapRef.current || isAnimating.current) return
     isAnimating.current = true
-
-    // 1. Determine the next state based on the ref
     const nextPitch = is3D.current ? 0 : 55
     const nextZoom = is3D.current ? 15 : 17
 
-    // 2. Animate the Native Map (No re-render triggered)
     mapRef.current.animateCamera({
       center: { 
         latitude: region.latitude, 
@@ -838,14 +833,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       zoom: nextZoom,       
     }, { duration: 600 })
 
-    // 3. Update the ref and unlock the animation guard after completion
     setTimeout(() => {
       is3D.current = !is3D.current
       isAnimating.current = false
     }, 650)
   }
-
-  
 
   return (
     <Screen contentContainerStyle={{ flex: 1 }}>
@@ -981,7 +973,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                 <Text weight="bold" size="xs" style={{ marginTop: 15 }}>Brand</Text>
                 <TouchableOpacity style={$brandPickerTrigger} onPress={() => { setTempBrands([...activeBrands]); setIsBrandPickerVisible(true); }}>
                   <Text size="sm" numberOfLines={1}>{tempBrands.length === 0 ? "All Brands" : tempBrands.join(", ")}</Text>
-                  <Icon icon="caretRight" size={20} />
+                  <Icon icon="caret_right" size={20} />
                 </TouchableOpacity>
               </>
               <>
@@ -1056,8 +1048,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
             
             {selectedStation && (
               <Animated.View entering={FadeIn} style={$detailCard}>
-                <TouchableOpacity onPress={() => setSelectedStation(null)} style={$dismissHandle}>
-                  <Icon icon="caretDown" size={24} color="white" />
+                <TouchableOpacity onPress={() => {setSelectedStation(null); setIsReporting(false);}} style={$dismissHandle}>
+                  <Icon icon="caret_down" size={24} color="white" />
                 </TouchableOpacity>
                 
                 <View style={$innerContent}>
@@ -1115,20 +1107,20 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                           <View style={{ alignItems: 'center', padding: 10, backgroundColor: '#F2F2F7', borderRadius: 12, justifyContent: "flex-start" }}>
                             <Text text="Waiting for others to verify your report..." size="xs" style={{ opacity: 0.5 }} />
                           </View>
-                          <TouchableOpacity 
-                            style={[$pendingFormButtons, { 
-                              backgroundColor: colors.palette.angry500, 
-                              flexDirection: 'row', 
-                              justifyContent: 'center', // Centers the text horizontally
-                              alignItems: 'center',     // Centers the text vertically
+                          <TouchableOpacity
+                            style={[$pendingFormButtons, {
+                              backgroundColor: colors.palette.angry500,
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                              alignItems: 'center',
                               gap: 8,
-                              minHeight: 45             // Ensures the button is tall enough to see the text
-                            }]} 
+                              minHeight: 45
+                            }]}
                             onPress={() => handleCancelMyReport(selectedStation.id)}
                           >
                             <Text 
-                              text="Cancel My Report" 
-                              style={{ color: '#FFFFFF', fontWeight: 'bold' }} // Using hex for certainty
+                              text="Cancel My Report"
+                              style={{ color: '#FFFFFF', fontWeight: 'bold' }}
                             />
                           </TouchableOpacity>
                         </View>
@@ -1168,10 +1160,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       ) : selectedStation.fetchError ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
                           <Icon icon="information" color={colors.palette.angry500} size={40} />
-                          <Text 
-                            style={{ textAlign: 'center', marginTop: 10, color: colors.palette.angry500 }} 
-                            text="Sorry, there is a problem in this location." 
-                          />
+                          <Text style={{ textAlign: 'center', marginTop: 10, color: colors.palette.angry500 }} text="Sorry, there is a problem in this location." />
                         </View>
                       ) : (
                         <ScrollView nestedScrollEnabled contentContainerStyle={$scrollContentInternal}>
@@ -1190,9 +1179,15 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                                       <TextInput 
                                         style={$priceInput} 
                                         keyboardType="decimal-pad" 
-                                        value={reportPrices[key] || ""} 
-                                        onChangeText={(val) => setReportPrices(prev => ({ ...prev, [key]: val }))} 
-                                        placeholder="0.00" 
+                                        defaultValue=""
+                                        placeholder="00.00" 
+                                        onChangeText={(val) => {
+                                          const cleaned = val
+                                          .replace(/,/g, ".")
+                                          .replace(/[^0-9.]/g, "")
+                                          .replace(/(\..*)\./g, "$1")
+                                          priceInputsRef.current[key] = cleaned;
+                                        }}
                                       />
                                     ) : ( 
                                       <Text style={$fuelTypePrice}>
@@ -1224,7 +1219,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       ) : (
                         <>
                           <TouchableOpacity style={[$directionsButton, selectedStation.fetchError && { opacity: 0.5, backgroundColor: '#ccc' }]} disabled={selectedStation.fetchError} onPress={showDirections}><Icon icon="directions" color="white" size={24} /><Text style={$buttonText}>Directions</Text></TouchableOpacity>
-                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }, selectedStation.fetchError && { opacity: 0.5, backgroundColor: '#ccc' }]} disabled={selectedStation.fetchError} onPress={() => setIsReporting(true)}><Icon icon="priceUpdate" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
+                          <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }, selectedStation.fetchError && { opacity: 0.5, backgroundColor: '#ccc' }]} disabled={selectedStation.fetchError} onPress={() => setIsReporting(true)}><Icon icon="price_update" color="white" size={24} /><Text style={$buttonText}>Update Price</Text></TouchableOpacity>
                         </>
                       )}
                     </View>
@@ -1246,8 +1241,6 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       >
         <TouchableOpacity style={$brandModalOverlay} activeOpacity={1} onPress={() => setIsContributorPressed(false)}>
           <View style={$userInfoCard}>
-            
-            {/* LAZY LOADING WRAPPER: Only render content if data exists */}
             {!currentContributor ? (
               <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
                 <Text text="Loading profile..." style={{ color: "#8E8E93" }} />
@@ -1273,47 +1266,60 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                       >
                         {getDisplayName(currentContributor?.full_name, currentContributor?.b_show_name ?? true)}
                       </Text>
-                      <Image source={require("@assets/icons/download/medal-gold.png")} style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" />
+                      <Image
+                        source={
+                          currentContributor?.no_contributions < 50 ? ICON_MEDAL_BRONZE :
+                          currentContributor?.no_contributions < 100 ? ICON_MEDAL_SILVER :
+                          /*userData?.no_contributions >  100 ? */ ICON_MEDAL_GOLD
+                        } 
+                        style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain"
+                      />
                     </View>
-                    <Text style={{ color: "#666", fontSize: 14 }}>Rank: Gold Contributor</Text>
+                    <Text style={{ color: "#666" }} size="xs">
+                      {
+                        currentContributor?.no_contributions < 50 ? "BRONZE CONTRIBUTOR" :
+                        currentContributor?.no_contributions < 100 ? "SILVER CONTRIBUTOR" :
+                        /*currentContributor?.no_contributions >  100 ? */ "GOLD CONTRIBUTOR"
+                      }
+                    </Text>
                   </View>
                 </View>
 
-                <View style={$statsRow}>
-                  <View style={$statBox}>
+                <View style={$contributorStatsRow}>
+                  <View style={$contributorStatBox}>
                     <Text weight="bold" style={$statValue}>{currentContributor?.no_contributions || 0}</Text>
                     <Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text>
                   </View>
-                  <View style={$statBox}>
+                  <View style={$contributorStatBox}>
                     <Text weight="bold" style={$statValue}>{currentContributor?.no_incorrect_reports || 0}</Text>
                     <Text size="xxs" style={$statLabel}>INCORRECT REPORTS</Text>
                   </View>
                 </View>
 
-                <TouchableOpacity style={$paymentContainer} onPress={() => handleCopyNumber(currentContributor?.phone || "")} activeOpacity={0.5}>
+                <TouchableOpacity style={$contributorPaymentContainer} onPress={() => handleCopyNumber(currentContributor?.phone || "")} activeOpacity={0.5}>
                   {(currentContributor?.b_show_gcash || currentContributor?.b_show_maya) && currentContributor?.phone && (
-                    <View style={$paymentCard}>
-                      <View style={$cardTopRow}>
+                    <View style={$contributorPaymentCard}>
+                      <View style={$contributorCardTopRow}>
                           <Text size="xxs" weight="bold" style={{ color: colors.palette.neutral400 }}>
                             TIP VIA
                           </Text>
                         <Icon icon="copy" size={20} color={colors.palette.neutral400} />
                       </View>
 
-                      <View style={$cardBottomRow}>
-                        <View style={$eWalletGroup}>
+                      <View style={$contributorCardBottomRow}>
+                        <View style={$contributorWalletGroup}>
                             {currentContributor?.b_show_gcash && (
-                              <View style={$eWalletWrapper}>
+                              <View style={$contributorWalletWrapper}>
                                 <GCashLogo width={32} height={20} />
                               </View>
                             )}
                             {currentContributor?.b_show_maya && (
-                              <View style={$eWalletWrapper}>
+                              <View style={$contributorWalletWrapper}>
                                 <MayaLogo width={32} height={20} />
                               </View>
                             )}
                           </View>
-                        <Text weight="semiBold" style={$phoneNumberText}>
+                        <Text weight="semiBold" style={$contributorPhoneNumber}>
                           {currentContributor?.phone}
                         </Text>
                       </View>
@@ -1342,8 +1348,8 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       {/* --ADD STATION BUTTON */}
       {/* --ADD STATION CROSSHAIR */}
       {isAddMarkerMode && (
-        <Animated.View entering={FadeInUp} style={$placementBar}>
-          <Text text="Center the station on the crosshair" style={{ color: 'white', marginBottom: 8 }} />
+        <Animated.View entering={FadeInUp} style={$addMarkerToolTip}>
+          <Text text="Zoom in for better accuracy" style={{ color: 'white', marginBottom: 7 }} />
           <View style={{flex: 1, flexDirection: "row", padding: 10, justifyContent: "space-between", width: "90%", alignItems: "center"}}>
             <TouchableOpacity style={$confirmBtn} onPress={() => toggleAddMarkerMode()}>
               <Text text="Cancel" style={{ color: 'white', fontWeight: 'bold' }} />
@@ -1355,17 +1361,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         </Animated.View>
       )}
       {isAddMarkerMode && (
-        <View 
-          style={[
-            $crosshairContainer, 
-            { 
-              width: mapLayout.width,
-              height: mapLayout.height,
-              marginTop: 55, 
-            }
-          ]} 
-          pointerEvents="none"
-        >
+        <View style={[$crosshairContainer, { width: mapLayout.width, height: mapLayout.height, marginTop: 130, }]} pointerEvents="none">
           <Icon icon="close" color={"red"} size={40} />
           <View style={$crosshairDot} />
         </View>
@@ -1384,7 +1380,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                 onPress={() => setIsAddStationBrandPickerVisible(true)}
               >
                 <Text text={reportData.brand || "Select or Type Brand"} />
-                <Icon icon="caretRight" size={20} />
+                <Icon icon="caret_right" size={20} />
               </TouchableOpacity>
               <Modal 
                 visible={isAddStationBrandPickerVisible} 
@@ -1450,11 +1446,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                     text={reportData.city || "Select Municipality"} 
                   />
                 </View>
-                <Icon icon="caretRight" size={18} color={colors.palette.neutral400} />
+                <Icon icon="caret_right" size={18} color={colors.palette.neutral400} />
               </TouchableOpacity>
 
-
-              {/* --- 2. THE MODAL (Place this near your other Modals) --- */}
               <Modal 
                 visible={isMuniPickerVisible} 
                 transparent 
@@ -1674,20 +1668,12 @@ const $searchBrandInput: TextStyle = {
   marginLeft: 8, 
   color: 'black' 
 }
-
-const $searchBrandOption: ViewStyle = {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  paddingVertical: 12,
-  borderBottomWidth: 1,
-  borderBottomColor: '#F2F2F7'
-}
-const $eWalletGroup: ViewStyle = {
+const $contributorWalletGroup: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
   gap: 8, // Clean spacing between logos
 }
-const $eWalletWrapper: ViewStyle = {
+const $contributorWalletWrapper: ViewStyle = {
   backgroundColor: colors.palette.neutral100,
   paddingHorizontal: 6,
   paddingVertical: 4,
@@ -1695,52 +1681,36 @@ const $eWalletWrapper: ViewStyle = {
   borderWidth: 1,
   borderColor: colors.palette.neutral300,
 }
-const $paymentContainer: ViewStyle = {
-  marginTop: 16,
-  paddingTop: 16,
-  borderTopWidth: HAIRLINE,
-  borderTopColor: "#E5E5EA",
+const $contributorPaymentContainer: ViewStyle = {
+  marginTop: spacing.xs,
+  borderRadius: 16,
 }
 
-const $paymentCard: ViewStyle = {
+const $contributorPaymentCard: ViewStyle = {
   backgroundColor: "#F2F2F7",
-  borderRadius: 12,
-  padding: 12,
+  borderRadius: 16,
+  padding: 16,
   borderWidth: 1,
   borderColor: "#E5E5EA",
 }
 
-const $cardTopRow: ViewStyle = {
+const $contributorCardTopRow: ViewStyle = {
   flexDirection: "row",
   justifyContent: "space-between",
   alignItems: "center",
   marginBottom: 8,
 }
 
-const $cardBottomRow: ViewStyle = {
+const $contributorCardBottomRow: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
   justifyContent: "space-between",
 }
-const $phoneNumberText: TextStyle = {
+const $contributorPhoneNumber: TextStyle = {
   fontSize: 17,
   color: "#1C1C1E",
   letterSpacing: 0.5,
 }
-const $phoneRow: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  backgroundColor: "#F8F9FA",
-  padding: 12,
-  borderRadius: 12,
-  marginTop: 15,
-  borderWidth: 1,
-  borderColor: "#E5E5EA",
-}
-const $phoneInfo: ViewStyle = { flex: 1 }
-const $paymentIcons: ViewStyle = { flexDirection: "row", gap: 8 }
-const $paymentLogo: ViewStyle = { width: 24, height: 24 }
 const $fuelTag: ViewStyle = {
   backgroundColor: "white",
   paddingHorizontal: 8,
@@ -1749,13 +1719,6 @@ const $fuelTag: ViewStyle = {
   borderWidth: 1,
   borderColor: colors.palette.primary500,
 }
-const $pendingFormButtonss: ViewStyle = {
-  padding: 12,
-  borderRadius: 8,
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#EEE',
-}
 const $utilityBtn: ViewStyle = {
   position: 'absolute',
   right: 10,
@@ -1763,20 +1726,6 @@ const $utilityBtn: ViewStyle = {
   height: 50,
   borderRadius: 25,
   backgroundColor: "#1737ba", 
-  justifyContent: 'center',
-  alignItems: 'center',
-  elevation: 5,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.25,
-  shadowRadius: 3.84,
-  zIndex: Z_INDEX_HELPER_BUTTONS,
-}
-const $fab: ViewStyle = {
-  position: 'absolute',
-  bottom: 120, 
-  right: 20,
-  borderRadius: 30,
   justifyContent: 'center',
   alignItems: 'center',
   elevation: 5,
@@ -1820,9 +1769,9 @@ const $crosshairDot: ViewStyle = {
   backgroundColor: "red",
   position: "absolute",
 }
-const $placementBar: ViewStyle = {
+const $addMarkerToolTip: ViewStyle = {
   position: 'absolute',
-  bottom: 70,
+  bottom: 50,
   left: 10,
   right: 10,
   backgroundColor: 'rgba(0,0,0,0.85)',
@@ -1850,15 +1799,6 @@ const $miniInput: TextStyle = {
   borderWidth: HAIRLINE,
   borderColor: "#D1D1D6",
 }
-
-const $pendingNotice: ViewStyle = {
-  backgroundColor: "#FFF9E6",
-  padding: 10,
-  borderRadius: 8,
-  marginTop: 10,
-  borderWidth: 1,
-  borderColor: "#FFE58F",
-}
 const $attributionContainer: ViewStyle = {
   position: "absolute",
   bottom: 8, 
@@ -1880,45 +1820,17 @@ const $attributionText: TextStyle = {
   fontSize: 10, 
   color: "#444",
 }
-
 const $linkText: TextStyle = {
   fontSize: 11, 
   color: "#007AFF", 
-}
-const $markerLevelButtonWrapper: ViewStyle = {
-  position: "absolute",
-  bottom: 40, 
-  alignSelf: "center", 
-  zIndex: Z_INDEX_HELPER_BUTTONS,
-}
-
-const $markerLevelPill: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#1737ba",
-  paddingVertical: 10,
-  paddingHorizontal: 16,
-  borderRadius: 25,
-  elevation: 6,
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 3 },
-  shadowOpacity: 0.3,
-  shadowRadius: 4,
-}
-
-const $pillText: TextStyle = {
-  color: "white",
-  fontSize: 12,
-  fontWeight: "bold",
-  marginLeft: 8,
 }
 const $profileHeader: ViewStyle = { flexDirection: "row", alignItems: "center", marginBottom: 20 }
 const $avatarCircle: ViewStyle = { width: 70, height: 70, borderRadius: 35, backgroundColor: "#E5E5EA", alignItems: "center", justifyContent: "center", marginRight: 16 }
 const $avatarText: TextStyle = { color: "#1737ba" }
 const $nameContainer: ViewStyle = { flex: 1 }
 const $tierRow: ViewStyle = { flexDirection: "row", alignItems: "center" }
-const $statsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 16, padding: 16, marginBottom: 12 }
-const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
+const $contributorStatsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 16, padding: 16, marginBottom: 12 }
+const $contributorStatBox: ViewStyle = { flex: 1, alignItems: "center" }
 const $statValue: TextStyle = { color: "#1C1C1E", fontSize: 18 }
 const $statLabel: TextStyle = { color: colors.palette.neutral400, marginTop: 4 }
 const $closeBtn: ViewStyle = { backgroundColor: "#1737ba", paddingVertical: 14, borderRadius: 16, alignItems: "center" }
@@ -1945,7 +1857,6 @@ const $segmentActive: ViewStyle = { backgroundColor: "white", elevation: 2 }
 const $fuelTypeSegment: TextStyle = { fontSize: 12, color: colors.palette.neutral400}
 const $fuelTypeSegmentActive: TextStyle = { color: colors.palette.primary500, fontWeight: "bold" }
 const $brandPickerTrigger: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F2F2F7', borderRadius: 10, padding: 12, marginTop: 8 }
-const $filterInput: TextStyle = { backgroundColor: "#F2F2F7", borderRadius: 10, padding: 12, marginTop: 8, fontSize: 16 }
 const $brandModalOverlay: ViewStyle = { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }
 const $brandModalContent: ViewStyle = { backgroundColor: 'white', width: '85%', borderRadius: 20, padding: 20 }
 const $brandModalHeader: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }
@@ -1953,12 +1864,7 @@ const $brandOption: ViewStyle = { flexDirection: 'row', justifyContent: 'space-b
 const $checkbox: ViewStyle = { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: '#D1D1D6', justifyContent: 'center', alignItems: 'center' }
 const $checkboxActive: ViewStyle = { backgroundColor: colors.palette.primary500, borderColor: colors.palette.primary500 }
 const $pendingFormButtons: ViewStyle = { flex: 1, paddingVertical: 12, borderRadius: 25, alignItems: 'center' }
-
 const $userInfoCard: ViewStyle = { backgroundColor: 'white', width: '90%', borderRadius: 24, padding: 24, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }
-const $feedbackRowExpanded: ViewStyle = { flexDirection: 'row', width: '100%', borderTopWidth: HAIRLINE, borderTopColor: '#EEE', paddingTop: 10, alignItems: 'center' }
-const $feedbackBtn: ViewStyle = { flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }
-const $verticalDividerFeedback: ViewStyle = { width: 1, height: 40, backgroundColor: '#EEE' }
-
 const $modalOverlay: ViewStyle = { flex: 1, justifyContent: "flex-end" }
 const $detailCard: ViewStyle = { backgroundColor: "white", height: 350 }
 const $dismissHandle: ViewStyle = { borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', paddingVertical: 5, backgroundColor: '#605e5e' }
@@ -1986,20 +1892,17 @@ const StationMarkers = React.memo(({
   activeFuelSubType: string | null, 
   onMarkerPress: (id: string) => void 
 }) => {
-  // This state controls whether the map is "videoing" the marker or "taking a photo"
   const [shouldTrack, setShouldTrack] = useState(true)
 
   useEffect(() => {
-    // 1. Every time the stations or filter changes, start "tracking" (video mode)
     setShouldTrack(true)
 
-    // 2. Wait 600ms for the background color and price to definitely be visible
     const timer = setTimeout(() => {
-      setShouldTrack(false) // 3. Freeze the marker (photo mode) for performance
+      setShouldTrack(false)
     }, 600)
 
     return () => clearTimeout(timer)
-  }, [stations.length, activeFuelSubType]) // Trigger this when data or filters change
+  }, [stations.length, activeFuelSubType])
 
   return (
     <>
@@ -2023,7 +1926,7 @@ const StationMarkers = React.memo(({
                 </View>
               )}
               <Image 
-                source={FUEL_MARKER} 
+                source={ICON_FUEL_MARKER} 
                 style={{ width: 30, height: 30, resizeMode: 'contain' }} 
               />
             </View>
