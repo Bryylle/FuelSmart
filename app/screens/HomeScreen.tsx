@@ -26,11 +26,7 @@ import { translate } from "@/i18n/translate"
 
 import type { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useNavigation } from "@react-navigation/native"
-
-// Utility for smooth refresh experience
 import { delay } from "@/utils/delay"
-
-// Integrated Supabase import
 import { supabase } from "@/services/supabase"
 
 type ServiceItem = {
@@ -38,6 +34,47 @@ type ServiceItem = {
   labelTx: TxKeyPath
   icon: string
 }
+
+const formatAmountOrRange = (amount: unknown) => {
+  // Handles null/undefined/empty
+  if (amount === null || amount === undefined) return "0.00";
+
+  // If it's a number already
+  if (typeof amount === "number") {
+    return amount.toFixed(2);
+  }
+
+  // Convert to string safely
+  const raw = String(amount).trim();
+  if (!raw) return "0.00";
+
+  // Remove spaces so "0.40 - 0.70" also works
+  const compact = raw.replace(/\s+/g, "");
+
+  // If it looks like a range "a-b"
+  if (compact.includes("-")) {
+    const [left, right] = compact.split("-");
+
+    // parse both sides
+    const a = Number(left);
+    const b = Number(right);
+
+    // If both are valid numbers, show as a formatted range
+    if (!Number.isNaN(a) && !Number.isNaN(b)) {
+      return `${a.toFixed(2)} - ${b.toFixed(2)}`;
+    }
+
+    // If parsing fails, fall back to raw (but keep it readable)
+    return raw;
+  }
+
+  // Single number string
+  const n = Number(compact);
+  if (!Number.isNaN(n)) return n.toFixed(2);
+
+  // Fallback (unexpected format)
+  return raw;
+};
 
 export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
   _props,
@@ -195,7 +232,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
         </SectionCard>
 
         {/* --FORECAST CARD */}
-        {/* Forecast Card */}
         <SectionCard testID="forecast-card">
           <View style={[themed($sectionHeader), { marginBottom: 4 }]}>
             <Text preset="subheading" tx="demoShowroomScreen:forecastTitle" />
@@ -230,7 +266,10 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
                         <Text style={themed($dataLabel)} tx={f.labelTx} />
                         <Text 
                           style={[themed($dataValue), { color: f.isIncrease ? colors.error : colors.palette.accent500 }]}
-                          text={`${f.isIncrease ? "+" : "-"}₱${Number(f.amount || 0).toFixed(2)}`}
+                          text={`${f.isIncrease ? "+" : "-"}₱${formatAmountOrRange(f.amount)}`}
+                          numberOfLines={1} 
+                          adjustsFontSizeToFit={true}
+                          minimumFontScale={0.7}
                         />
                         {index < 2 && <View style={themed($verticalDivider)} />}
                       </View>
@@ -284,38 +323,33 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
 }
 // #region STYLES
 const $forecastContentWrapper: ThemedStyle<ViewStyle> = () => ({
-  minHeight: 125, // Adjust this value to match your rendered data height exactly
-  justifyContent: "center", // Keeps the loader centered vertically while waiting
+  minHeight: 135,
+  justifyContent: "center",
 })
-
 const $skeletonContainer: ViewStyle = {
   gap: 16,
 }
 const $ctaTitle: TextStyle = { 
   marginBottom: 4 
 }
-
 const $ctaSubtitle: ThemedStyle<TextStyle> = ({ colors }) => ({ 
   color: colors.textDim, 
-  marginBottom: 16 // Increased margin for better spacing
+  marginBottom: 16
 })
-
 const $ctaButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   marginTop: spacing.xs,
-  backgroundColor: colors.palette.primary500, // Using primary brand color
+  backgroundColor: colors.palette.primary500,
   borderRadius: 16,
   borderWidth: 0,
-  minHeight: 56, // Slightly taller for a more "tappable" feel
+  minHeight: 56,
   padding: spacing.md
 })
-
 const $ctaButtonText: ThemedStyle<TextStyle> = ({ colors }) => ({ 
   color: colors.background,
   fontSize: 16,
 })
 const $container: ThemedStyle<ViewStyle> = () => ({ paddingTop: 0 })
 const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({ padding: spacing.lg, gap: spacing.lg })
-
 const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   backgroundColor: colors.background,
   borderRadius: 20,
@@ -323,14 +357,12 @@ const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   borderWidth: 1,
   borderColor: colors.border,
 })
-
 const $sectionHeader: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flexDirection: "row",
   alignItems: "center",
   justifyContent: "space-between",
   marginBottom: spacing.md,
 })
-
 const $priceDashboard: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: "#F2F2F7",
   borderRadius: 16,
@@ -340,27 +372,23 @@ const $priceDashboard: ThemedStyle<ViewStyle> = ({ colors }) => ({
   borderColor: "#E5E5EA",
   marginVertical: 4,
 })
-
 const $priceGridContainer: ThemedStyle<ViewStyle> = () => ({ flexDirection: "row" })
 const $dataEntry: ThemedStyle<ViewStyle> = () => ({ width: "33.33%", alignItems: "center" })
 const $verticalDivider: ThemedStyle<ViewStyle> = () => ({ position: 'absolute', right: 0, height: '80%', width: 1, backgroundColor: "#D1D1D6" })
 const $dataLabel: ThemedStyle<TextStyle> = () => ({ color: "#8E8E93", fontSize: 10, fontWeight: "600" })
-const $dataValue: ThemedStyle<TextStyle> = () => ({ fontSize: 18, fontWeight: "700", marginTop: 2 })
+const $dataValue: ThemedStyle<TextStyle> = () => ({ fontSize: 18, fontWeight: "600", marginTop: 2, paddingHorizontal: 3 })
 
-// Disclaimer Styles
 const $disclaimerBox: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flexDirection: "row",
   alignItems: "flex-start",
   gap: spacing.xs,
   marginTop: spacing.md,
 })
-
 const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.textDim,
   flex: 1,
   lineHeight: 14,
 })
-
 const $lastUpdatedText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, fontSize: 10 })
 const $headerLinkText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint, textDecorationLine: "underline" })
 const $headerLinkWrap: ViewStyle = { paddingHorizontal: 4 }
