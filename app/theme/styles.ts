@@ -21,3 +21,10 @@ export const $styles = {
     overflow: "hidden",
   } as ViewStyle,
 }
+
+export const $gStyles = {
+  cardBorderRadius: 12,
+  subCardBorderRadius: 10,
+  buttonBorderRadius: 8,
+  inputBorderRadius: 8,
+}

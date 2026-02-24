@@ -18,7 +18,7 @@ import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { Icon } from "@/components/Icon"
 import { Switch } from "@/components/Toggle/Switch"
-import { Header } from "@/components/Header"
+import { ScreenHeader } from "@/components/ScreenHeader"
 import type { ThemedStyle } from "@/theme/types"
 import { supabase } from "@/services/supabase"
 
@@ -146,16 +146,10 @@ export const AccountSettingsScreen: FC<DemoTabScreenProps<"AccountSettings">> = 
   return (
     <View style={{ flex: 1 }}>
       <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
-        <Header
-          title="Account Settings"
-          safeAreaEdges={["top"]}
-          style={themed($headerStyle)}
-          titleStyle={themed($headerTitle)}
-          LeftActionComponent={
-            <Pressable onPress={() => navigation.goBack()} style={$leftAction}>
-              <Icon icon="arrowLeft" size={24} color="#fff" />
-            </Pressable>
-          }
+        <ScreenHeader 
+          title="Account Settings" 
+          leftIcon="arrow_left" 
+          onLeftPress={() => navigation.goBack()} 
         />
 
         {loading ? (
@@ -175,7 +169,7 @@ export const AccountSettingsScreen: FC<DemoTabScreenProps<"AccountSettings">> = 
                   {phone ? `+63 ${phone}` : "No number added"}
                 </Text>
               </View>
-              <Icon icon="caretRight" size={20} />
+              <Icon icon="caret_right" size={20} />
             </Pressable>
             <View style={themed($divider)} />
             <View style={themed($indicatorSection)}>

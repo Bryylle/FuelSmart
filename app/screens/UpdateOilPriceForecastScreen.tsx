@@ -17,7 +17,7 @@ import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { Button } from "@/components/Button"
 import { Icon } from "@/components/Icon"
-import { Header } from "@/components/Header"
+import { ScreenHeader } from "@/components/ScreenHeader"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { supabase } from "@/services/supabase"
@@ -220,23 +220,11 @@ export const UpdateOilPriceForecastScreen: FC<DemoTabScreenProps<"UpdateOilPrice
 
   return (
     <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
-      <Header
-        title="Update Oil Price Forecast"
-        safeAreaEdges={["top"]}
-        LeftActionComponent={
-          <View style={$headerLeftActionWrapper}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Icon icon="arrow_left" size={24} color={"#fff"} />
-            </Pressable>
-          </View>
-        }
-        style={themed($headerStyle)}
-        titleStyle={themed($headerTitle)}
+      <ScreenHeader 
+        title="Account Settings" 
+        leftIcon="arrow_left" 
+        onLeftPress={() => navigation.goBack()} 
       />
-
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}

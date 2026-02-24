@@ -210,8 +210,6 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
           <Text preset="formLabel" style={$sectionHeader}>APP SETTINGS</Text>
           <View style={themed($insetGroup)}>
-            <ListItem text="Map Testing" onPress={() => navigation.navigate("MapTest")} rightIcon="caret_right" style={themed($listItemStyle)} />
-            <View style={themed($separator)} />
             <ListItem text="Preferred Stations" onPress={openFuelPicker} rightIcon="caret_right" style={themed($listItemStyle)} />
             <View style={themed($separator)} />
             <ListItem text="Dark Mode" RightComponent={<Switch value={themeContext === "dark"} onValueChange={toggleTheme} />} style={themed($listItemStyle)} />

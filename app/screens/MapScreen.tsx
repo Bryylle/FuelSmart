@@ -6,7 +6,7 @@ import { Text } from "@/components/Text"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { Icon, PressableIcon } from "@/components/Icon"
-import { Header } from "@/components/Header"
+import { ScreenHeader } from "@/components/ScreenHeader"
 import { Switch } from "@/components/Toggle/Switch"
 import MapView, { PROVIDER_GOOGLE, Marker, Region } from "react-native-maps"
 import { supabase } from "@/services/supabase"
@@ -22,6 +22,7 @@ import { useFocusEffect } from "@react-navigation/native"
 import { spacing } from "@/theme/spacing"
 import { BrandListModal } from "@/components/BrandListModal"
 import { MunicipalityListModal } from "@/components/MunicipalityListModal"
+import { $gStyles } from "@/theme/styles"
 
 import GCashLogo from "@assets/icons/gcash.svg"
 import MayaLogo from "@assets/icons/maya.svg"
@@ -858,20 +859,10 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
 
   return (
     <Screen contentContainerStyle={styles.flex}>
-      {/* --HEADER */}
-      <Header
-        safeAreaEdges={["top"]}
-        RightActionComponent={
-          <View style={styles.leftActionWrapper}>
-            <Pressable style={styles.inline_005}>
-              <Icon icon="information" size={30} color={"#fff"} />
-            </Pressable>
-          </View>
-        }
-        style={themed($headerStyle)}
-        titleStyle={themed($headerTitle)}
+      <ScreenHeader
+        title=""
+        rightIcon="information"
       />
-      {/* --HEADER */}
       {/* --MAPVIEW */}
       <View 
         style={styles.flex} 
@@ -1556,75 +1547,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  selectTrigger: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.palette.neutral100,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
-    borderWidth: 1,
-    borderColor: colors.palette.neutral200,
-    marginBottom: 16,
-  },
-  searchWrapper: {
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.palette.neutral200,
-  },
-  searchBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.palette.neutral100,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 48,
-  },
-  searchInputField: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: colors.text,
-  },
-  resultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.palette.neutral100,
-  },
-  checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.palette.primary500,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchBrandModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  searchBrandContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#F2F2F7', 
-    borderRadius: 10, 
-    paddingHorizontal: 10, 
-    marginBottom: 16, 
-    height: 45 
-  },
-  searchBrandInput: { 
-    flex: 1, 
-    height: '100%', 
-    marginLeft: 8, 
-    color: 'black' 
-  },
   contributorWalletGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8, // Clean spacing between logos
   },
   contributorWalletWrapper: {
-    backgroundColor: colors.palette.neutral100,
+    backgroundColor: "#ffffff",
     paddingHorizontal: 6,
     paddingVertical: 4,
     borderRadius: 4,
@@ -1673,15 +1602,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: HAIRLINE,
     borderBottomColor: "#EEE",
   },
-  toggleBtn: {
-    backgroundColor: "#8E8E93",
-    paddingHorizontal: 15,
-    paddingVertical: 5,
-    borderRadius: 15,
-  },
-  toggleBtnActive: {
-    backgroundColor: colors.palette.primary500,
-  },
   crosshairContainer: {
     position: 'absolute',
     top: 0, 
@@ -1705,7 +1625,7 @@ const styles = StyleSheet.create({
     right: 10,
     backgroundColor: colors.palette.neutral700,
     padding: 10,
-    borderRadius: 18,
+    borderRadius: $gStyles.cardBorderRadius,
     alignItems: 'center',
     zIndex: Z_INDEX_HELPER_BUTTONS,
   },
@@ -1720,7 +1640,7 @@ const styles = StyleSheet.create({
   },
   miniInput: {
     backgroundColor: "#F2F2F7",
-    borderRadius: 8,
+    borderRadius: $gStyles.inputBorderRadius,
     padding: 10,
     marginTop: 5,
     fontSize: 14,
@@ -1778,15 +1698,15 @@ const styles = StyleSheet.create({
   fuelTypeSegmentActive: { color: colors.palette.primary400, fontWeight: "bold" },
   modalTriggerBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.childBackground, borderRadius: 8, padding: 12, marginTop: 8 },
   brandModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  brandModalContent: { backgroundColor: colors.background, width: '90%', borderRadius: 12, padding: 20 },
-  pendingFormBtns: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  brandModalContent: { backgroundColor: colors.background, width: '90%', borderRadius: $gStyles.cardBorderRadius, padding: 20 },
+  pendingFormBtns: { flex: 1, paddingVertical: 12, borderRadius: $gStyles.buttonBorderRadius, alignItems: 'center' },
   userInfoCard: { backgroundColor: 'white', width: '90%', borderRadius: 24, padding: 24, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   detailCard: { backgroundColor: colors.background, minHeight: 350 },
   dismissHandle: { borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', paddingVertical: 5, backgroundColor: colors.palette.neutral600 },
   innerContent: { paddingHorizontal: 20, paddingTop: 12 },
   favoriteBtn: { padding: 8 },
-  priceDashboard: { minHeight: 140, backgroundColor: colors.childBackground, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: colors.palette.neutral200 },
+  priceDashboard: { minHeight: 140, backgroundColor: colors.childBackground, borderRadius: $gStyles.subCardBorderRadius, marginTop: 10, borderWidth: 1, borderColor: colors.palette.neutral200 },
   scrollPriceGrid: { paddingVertical: 14, paddingHorizontal: 8 },
   priceGridContainer: { flexDirection: "row", flexWrap: "wrap", rowGap: 16 },
   fuelTypeLabel: { color: "#8E8E93", fontSize: 14, fontWeight: "600" },

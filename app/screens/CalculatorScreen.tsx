@@ -10,7 +10,13 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native"
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated"
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  FadeInDown, 
+  withSequence, 
+} from "react-native-reanimated"
 
 import { Button } from "@/components/Button"
 import { Card } from "@/components/Card"
@@ -18,91 +24,78 @@ import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
-import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
 import { delay } from "@/utils/delay"
 import { Icon } from "@/components/Icon"
 import { colors } from "@/theme/colors"
-import { Header } from "@/components/Header"
+import { ScreenHeader } from "@/components/ScreenHeader"
 
 export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigation }) => {
-  const { themed } = useAppTheme()
+  const { themed, theme } = useAppTheme()
 
   const [refreshing, setRefreshing] = useState(false)
   const manualRefresh = async () => {
-      setRefreshing(true)
-      await Promise.allSettled([resetForm(), delay(750)])
-      setRefreshing(false)
-    }
+    setRefreshing(true)
+    await Promise.allSettled([resetForm(), delay(750)])
+    setRefreshing(false)
+  }
 
   // Form state
   const [distanceKm, setDistanceKm] = useState<string>("")
   const [fuelPrice, setFuelPrice] = useState<string>("")
   const [kmPerLiter, setKmPerLiter] = useState<string>("")
 
-  // UX
+  // UX state
   const [isLoading, setIsLoading] = useState(false)
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [focused, setFocused] = useState<"distance" | "price" | "eff" | null>(null)
 
-  // Results
+  // Results state
   const [litersNeeded, setLitersNeeded] = useState<number | null>(null)
   const [tripCost, setTripCost] = useState<number | null>(null)
 
-  const parseNum = (v: string) => {
-    const n = Number(String(v).replace(/,/g, ""))
-    return Number.isFinite(n) ? n : NaN
+  // Validation Logic
+  const isValidNumber = (str: string) => {
+    const regex = /^\d*\.?\d*$/
+    return str !== "" && regex.test(str) && !isNaN(parseFloat(str)) && parseFloat(str) > 0
   }
 
-  const distanceNum = useMemo(() => parseNum(distanceKm), [distanceKm])
-  const priceNum = useMemo(() => parseNum(fuelPrice), [fuelPrice])
-  const effNum = useMemo(() => parseNum(kmPerLiter), [kmPerLiter])
+  const distanceError = hasSubmitted && !isValidNumber(distanceKm)
+  const priceError = hasSubmitted && !isValidNumber(fuelPrice)
+  const effError = hasSubmitted && !isValidNumber(kmPerLiter)
 
-  const distanceError =
-    hasSubmitted && (isNaN(distanceNum) || distanceNum <= 0)
-      ? "Enter a valid distance in kilometers."
-      : ""
-  const priceError =
-    hasSubmitted && (isNaN(priceNum) || priceNum <= 0)
-      ? "Enter a valid price per liter."
-      : ""
-  const effError =
-    hasSubmitted && (isNaN(effNum) || effNum <= 0)
-      ? "Enter a valid km-per-liter efficiency."
-      : ""
+  const canCompute = isValidNumber(distanceKm) && isValidNumber(fuelPrice) && isValidNumber(kmPerLiter)
 
-  const canCompute =
-    Number.isFinite(distanceNum) &&
-    Number.isFinite(priceNum) &&
-    Number.isFinite(effNum) &&
-    distanceNum > 0 &&
-    priceNum > 0 &&
-    effNum > 0
-
-  // Result animation
+  // Animations
   const resultProgress = useSharedValue(0)
   const resultStyle = useAnimatedStyle(() => ({
     opacity: resultProgress.value,
-    transform: [{ translateY: (1 - resultProgress.value) * 12 }],
+    transform: [{ scale: 0.95 + resultProgress.value * 0.05 }],
   }))
 
   const onCompute = useCallback(async () => {
     setHasSubmitted(true)
-    if (!canCompute) return
+    if (!canCompute) {
+      return
+    }
 
     setIsLoading(true)
-    await delay(300)
+    await delay(400)
 
-    const liters = distanceNum / effNum
-    const cost = liters * priceNum
+    const d = parseFloat(distanceKm)
+    const p = parseFloat(fuelPrice)
+    const e = parseFloat(kmPerLiter)
+
+    const liters = d / e
+    const cost = liters * p
 
     setLitersNeeded(liters)
     setTripCost(cost)
 
     resultProgress.value = 0
-    resultProgress.value = withTiming(1, { duration: 220 })
+    resultProgress.value = withTiming(1, { duration: 400 })
     setIsLoading(false)
-  }, [canCompute, distanceNum, effNum, priceNum, resultProgress])
+  }, [canCompute, distanceKm, fuelPrice, kmPerLiter, resultProgress])
 
   const resetForm = useCallback(() => {
     setDistanceKm("")
@@ -114,164 +107,161 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     resultProgress.value = 0
   }, [resultProgress])
 
-  const formatNumber = (n: number | null, fractionDigits = 2) => {
-    if (n === null || !Number.isFinite(n)) return "—"
-    try {
-      return new Intl.NumberFormat(undefined, {
-        minimumFractionDigits: fractionDigits,
-        maximumFractionDigits: fractionDigits,
-      }).format(n)
-    } catch {
-      return n.toFixed(fractionDigits)
-    }
+  const formatNumber = (n: number | null) => {
+    if (n === null) return "0.00"
+    return new Intl.NumberFormat("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)
   }
 
-  const webInputReset: TextStyle =
-    Platform.OS === "web"
-      ? ({
-          outlineStyle: "none",
-          boxShadow: "none",
-          appearance: "none",
-          WebkitAppearance: "none",
-          MozAppearance: "textfield",
-        } as any)
-      : ({} as any)
-
-  // FIX: Memoizing this content prevents the "Focus Jumping" bug
   const formContent = useMemo(() => (
-    <View>
+    <View style={themed($formInner)}>
       <View style={themed($fieldGroup)}>
-        <Text style={themed($label)}>Trip Distance (km)</Text>
-        <View style={[themed($inputFrame), focused === "distance" && themed($inputFrameFocused)]}>
+        <Text preset="formLabel" style={themed($label)}>Trip Distance</Text>
+        <View style={[
+          themed($inputFrame), 
+          focused === "distance" && themed($inputFrameFocused),
+          distanceError && themed($inputError)
+        ]}>
+          <Icon 
+            icon="map" 
+            size={20} 
+            color={distanceError ? theme.colors.error : (focused === "distance" ? theme.colors.tint : theme.colors.textDim)} 
+          />
           <TextInput
             value={distanceKm}
-            onChangeText={setDistanceKm}
+            onChangeText={(v) => {
+              setDistanceKm(v)
+              if (hasSubmitted) setHasSubmitted(false)
+            }}
             onFocus={() => setFocused("distance")}
             onBlur={() => setFocused(null)}
             keyboardType="decimal-pad"
-            placeholder="e.g., 90"
-            placeholderTextColor="#9AA0A6"
-            style={[themed($input), webInputReset]}
+            placeholder="0.0"
+            placeholderTextColor={theme.colors.textDim}
+            style={themed($input)}
           />
+          <Text style={themed($suffix)}>km</Text>
         </View>
-        {!!distanceError && <Text style={themed($error)}>{distanceError}</Text>}
+        {distanceError && <Text style={themed($errorText)}>Enter a valid distance</Text>}
       </View>
 
+      {/* Fuel Price Input */}
       <View style={themed($fieldGroup)}>
-        <Text style={themed($label)}>Fuel Price (per liter)</Text>
-        <View style={[themed($inputFrame), focused === "price" && themed($inputFrameFocused)]}>
-          <Text style={themed($prefix)}>₱</Text>
+        <Text preset="formLabel" style={themed($label)}>Fuel Price</Text>
+        <View style={[
+          themed($inputFrame), 
+          focused === "price" && themed($inputFrameFocused),
+          priceError && themed($inputError)
+        ]}>
+          <Text style={[themed($prefix), priceError && { color: theme.colors.error }]}>₱</Text>
           <TextInput
             value={fuelPrice}
-            onChangeText={setFuelPrice}
+            onChangeText={(v) => {
+              setFuelPrice(v)
+              if (hasSubmitted) setHasSubmitted(false)
+            }}
             onFocus={() => setFocused("price")}
             onBlur={() => setFocused(null)}
             keyboardType="decimal-pad"
-            placeholder="e.g., 56"
-            placeholderTextColor="#9AA0A6"
-            style={[themed($input), { flex: 1 }, webInputReset]}
+            placeholder="0.00"
+            placeholderTextColor={theme.colors.textDim}
+            style={themed($input)}
           />
+          <Text style={themed($suffix)}>per L</Text>
         </View>
-        {!!priceError && <Text style={themed($error)}>{priceError}</Text>}
+        {priceError && <Text style={themed($errorText)}>Enter a valid price</Text>}
       </View>
 
+      {/* Efficiency Input */}
       <View style={themed($fieldGroup)}>
-        <Text style={themed($label)}>Vehicle Efficiency (km/L)</Text>
-        <View style={[themed($inputFrame), focused === "eff" && themed($inputFrameFocused)]}>
+        <Text preset="formLabel" style={themed($label)}>Vehicle Fuel Efficiency</Text>
+        <View style={[
+          themed($inputFrame), 
+          focused === "eff" && themed($inputFrameFocused),
+          effError && themed($inputError)
+        ]}>
+          <Icon 
+            icon="settings" 
+            size={20} 
+            color={effError ? theme.colors.error : (focused === "eff" ? theme.colors.tint : theme.colors.textDim)} 
+          />
           <TextInput
             value={kmPerLiter}
-            onChangeText={setKmPerLiter}
+            onChangeText={(v) => {
+              setKmPerLiter(v)
+              if (hasSubmitted) setHasSubmitted(false)
+            }}
             onFocus={() => setFocused("eff")}
             onBlur={() => setFocused(null)}
             keyboardType="decimal-pad"
-            placeholder="e.g., 9"
-            placeholderTextColor="#9AA0A6"
-            style={[themed($input), webInputReset]}
+            placeholder="0.0"
+            placeholderTextColor={theme.colors.textDim}
+            style={themed($input)}
           />
+          <Text style={themed($suffix)}>km/L</Text>
         </View>
-        {!!effError && <Text style={themed($error)}>{effError}</Text>}
+        {effError && <Text style={themed($errorText)}>Enter a valid fuel efficiency</Text>}
       </View>
 
       <View style={themed($actions)}>
         <Button
           preset="filled"
-          disabled={!canCompute || isLoading}
           onPress={onCompute}
           style={themed($computeBtn)}
+          pressedStyle={{ opacity: 0.9 }}
         >
-          {isLoading ? "Computing…" : "Compute"}
+          <Text style={{ color: "white", fontWeight: "bold" }}>
+            {isLoading ? "Calculating..." : "Calculate Trip"}
+          </Text>
         </Button>
-        <Button onPress={resetForm} disabled={isLoading}>Reset</Button>
+        <Pressable onPress={resetForm} style={themed($resetBtn)}>
+          <Text size="sm" style={{ color: theme.colors.textDim }}>Clear All</Text>
+        </Pressable>
       </View>
     </View>
-  ), [distanceKm, fuelPrice, kmPerLiter, focused, hasSubmitted, isLoading, themed])
+  ), [distanceKm, fuelPrice, kmPerLiter, focused, hasSubmitted, isLoading, themed, theme, distanceError, priceError, effError])
 
   return (
     <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
-      <Header
-          title="Trip cost calculator"
-          safeAreaEdges={["top"]} 
-          LeftActionComponent={
-            <View style={$leftActionWrapper}>
-              <Pressable
-                onPress={() => navigation.goBack()}
-                accessibilityLabel="Go back"
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Icon icon="arrowLeft" size={24} color={"#fff"} />
-              </Pressable>
-            </View>
-          }
-          style={themed($headerStyle)}
-          titleStyle={themed($headerTitle)}
-        />
-      <ScrollView
-        contentContainerStyle={themed($content)}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={manualRefresh} tintColor={colors.palette.primary500} />
-        }
-      >
-        <View style={themed($titleWrap)}>
-          <Text style={themed($tagline)}>Calculate the fuel needed and total cost for your trip.</Text>
-        </View>
+      <ScreenHeader 
+        title="Trip cost calculator" 
+        leftIcon="arrow_left" 
+        onLeftPress={() => navigation.goBack()} 
+      />
 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={manualRefresh} />}
+      >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: undefined })}
-          style={themed($content)}
+          style={themed($mainContainer)}
         >
-          <Card
-            style={themed($card)}
-            ContentComponent={formContent}
-          />
+          <Animated.View entering={FadeInDown.duration(400)}>
+            <Card style={themed($card)} ContentComponent={formContent} />
+          </Animated.View>
 
-          {(litersNeeded !== null || tripCost !== null) && (
+          {litersNeeded !== null && !isLoading && (
             <Animated.View style={[themed($resultsWrap), resultStyle]}>
-              <Card
-                style={themed($resultsCard)}
-                ContentComponent={
-                  <View>
-                    <Text preset="subheading" style={themed($resultsTitle)}>Estimate</Text>
-                    <View style={themed($resultRow)}>
-                      <Text style={themed($resultLabel)}>Fuel needed</Text>
-                      <Text style={themed($resultValue)}>{formatNumber(litersNeeded, 2)} L</Text>
-                    </View>
-                    <View style={themed($divider)} />
-                    <View style={themed($resultRow)}>
-                      <Text style={themed($resultLabel)}>Trip cost</Text>
-                      <Text style={themed($resultValue)}>₱ {formatNumber(tripCost, 2)}</Text>
-                    </View>
-                    <Text style={themed($note)}>
-                      
-                    </Text>
-                    {/* Styled Disclaimer Box */}
-                    <View style={themed($disclaimerBox)}>
-                      <Icon icon="information" size={14} color={colors.textDim} />
-                      <Text size="xxs" style={themed($disclaimerText)}>Estimates assume constant speed and no traffic or load variations.</Text>
-                    </View>
-                  </View>
-                }
-              />
+              <View style={themed($resultsContent)}>
+                <View style={themed($resultItem)}>
+                  <Text style={themed($resultLabel)}>Total Fuel</Text>
+                  <Text style={themed($resultValue)}>{formatNumber(litersNeeded)} L</Text>
+                </View>
+                <View style={themed($resultItem)}>
+                  <Text style={themed($resultLabel)}>Estimated Cost</Text>
+                  <Text style={[themed($resultValue), { color: theme.colors.tint }]}>₱ {formatNumber(tripCost)}</Text>
+                </View>
+                
+                <View style={themed($disclaimerBox)}>
+                  <Icon icon="information" size={14} color={theme.colors.textDim} />
+                  <Text size="xxs" style={themed($disclaimerText)}>
+                    Estimates assume constant speed and no traffic.
+                  </Text>
+                </View>
+              </View>
             </Animated.View>
           )}
         </KeyboardAvoidingView>
@@ -279,159 +269,160 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     </Screen>
   )
 }
-const $disclaimerBox: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  alignItems: "flex-start",
-  gap: spacing.xs,
-})
 
-const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.textDim,
-  flex: 1,
-  lineHeight: 14,
-})
-const $screenContainer: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
-const $headerStyle: ThemedStyle<ViewStyle> = () => ({
-  backgroundColor: "#1737ba",
-})
+// --- Styles ---
 
-const $headerTitle: ThemedStyle<TextStyle> = () => ({
-  color: "#fff",
-})
+const $screenContainer: ViewStyle = { flex: 1, backgroundColor: "#F8F9FD" }
+const $headerStyle: ViewStyle = { backgroundColor: "#1737ba", borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }
+const $headerTitle: TextStyle = { color: "#fff", fontWeight: "bold" }
+const $leftActionWrapper: ViewStyle = { marginLeft: 16 }
 
-const $leftActionWrapper: ViewStyle = {
-  justifyContent: "center",
-  alignItems: "center",
-  marginLeft: 16,
-}
-const $input: ThemedStyle<TextStyle> = ({ colors }) => ({
-  flex: 1,
-  color: colors.text,
-  fontSize: 16,
-  backgroundColor: "transparent",
-  paddingVertical: Platform.select({ ios: 12, android: 10 }),
-  paddingHorizontal: 0,
-  includeFontPadding: false,
-  borderWidth: 0,
-})
-
-const $titleWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  paddingHorizontal: spacing.lg,
-  marginBottom: spacing.xs,
-})
-
-const $tagline: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
-  color: colors.textDim,
-  paddingHorizontal: spacing.xxxs,
-  marginTop: spacing.md,
-  marginBottom: spacing.xs,
-})
-
-const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flex: 1,
-  paddingHorizontal: spacing.lg,
+const $mainContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  padding: spacing.lg,
 })
 
 const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   backgroundColor: colors.background,
-  borderRadius: spacing.md,
-  marginBottom: spacing.lg,
-  padding: spacing.lg,
+  borderRadius: 24,
+  padding: spacing.md,
+  borderWidth: 0,
   shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 2,
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.05,
+  shadowRadius: 20,
+  elevation: 5,
 })
+
+const $formInner: ViewStyle = { padding: 4 }
 
 const $fieldGroup: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.md,
 })
 
-const $label: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.text,
-  fontWeight: "700",
-  letterSpacing: 0.2,
-  marginBottom: 6,
+const $label: ThemedStyle<TextStyle> = ({ spacing }) => ({
+  marginBottom: spacing.xs,
+  marginLeft: 4,
+  fontSize: 13,
+  opacity: 0.8,
+  fontWeight: "600",
 })
 
-const $inputFrame: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
-  minHeight: 48,
-  borderWidth: 1.25,
-  borderColor: colors.separator,
-  backgroundColor: colors.background,
-  borderRadius: 8,
-  paddingHorizontal: spacing.md,
+const $inputFrame: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flexDirection: "row",
   alignItems: "center",
+  backgroundColor: "#F1F3F9",
+  borderRadius: 8,
+  paddingHorizontal: spacing.md,
+  height: 56,
+  borderWidth: 1.5,
+  borderColor: "transparent",
 })
 
 const $inputFrameFocused: ThemedStyle<ViewStyle> = ({ colors }) => ({
   borderColor: colors.tint,
+  backgroundColor: colors.background,
 })
 
-const $prefix: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+const $inputError: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  borderColor: colors.error,
+  backgroundColor: "#FFF5F5",
+})
+
+const $input: ThemedStyle<TextStyle> = ({ colors }) => ({
+  flex: 1,
+  fontSize: 16,
+  fontWeight: "600",
+  color: colors.text,
+  paddingHorizontal: 12,
+})
+
+const $prefix: ThemedStyle<TextStyle> = ({ colors }) => ({
+  fontSize: 16,
+  fontWeight: "bold",
   color: colors.textDim,
-  marginRight: spacing.xs,
+})
+
+const $suffix: ThemedStyle<TextStyle> = ({ colors }) => ({
+  fontSize: 12,
+  fontWeight: "bold",
+  color: colors.textDim,
+  textTransform: "uppercase",
+})
+
+const $errorText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.error,
+  fontSize: 12,
+  marginTop: 4,
+  marginLeft: 4,
   fontWeight: "600",
 })
 
-const $error: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
-  marginTop: spacing.xs,
-  color: colors.error,
-  fontSize: 13,
-})
-
-const $actions: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  gap: spacing.md,
-  marginTop: spacing.sm,
-})
-
-const $computeBtn: ThemedStyle<ViewStyle> = ({}) => ({
-  flex: 1,
-})
-
-const $resultsWrap: ThemedStyle<ViewStyle> = ({}) => ({})
-
-const $resultsCard: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
-  backgroundColor: colors.background,
-  borderRadius: spacing.md,
-  padding: spacing.lg,
-  shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 2,
-})
-
-const $resultsTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginBottom: spacing.md,
-})
-
-const $resultRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
+const $actions: ViewStyle = {
+  marginTop: 12,
   alignItems: "center",
-  justifyContent: "space-between",
-  marginVertical: spacing.xs,
+}
+
+const $computeBtn: ViewStyle = {
+  width: "100%",
+  height: 52,
+  borderRadius: 8,
+  backgroundColor: "#1737ba",
+  borderWidth: 0,
+}
+
+const $resetBtn: ViewStyle = {
+  paddingVertical: 16,
+}
+
+const $resultsWrap: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  marginTop: 24,
+  backgroundColor: colors.background,
+  borderRadius: 12,
+  overflow: "hidden",
+  shadowColor: "#000",
+  shadowOpacity: 0.1,
+  shadowRadius: 15,
+  elevation: 6,
 })
+
+const $resultsHeader: ViewStyle = {
+  backgroundColor: "#1737ba",
+  paddingVertical: 12,
+  alignItems: "center",
+}
+
+const $resultsContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  padding: spacing.lg,
+})
+
+const $resultItem: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 12,
+}
 
 const $resultLabel: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.textDim,
+  fontSize: 15,
 })
 
-const $resultValue: ThemedStyle<TextStyle> = ({ colors }) => ({
-  color: colors.text,
-  fontWeight: "800",
-  fontSize: 18,
-})
+const $resultValue: TextStyle = {
+  fontSize: 20,
+  fontWeight: "900",
+}
 
-const $divider: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
-  height: 1,
-  backgroundColor: colors.separator,
-  marginVertical: spacing.sm,
-})
+const $disclaimerBox: ViewStyle = {
+  marginTop: 10,
+  paddingTop: 16,
+  borderTopWidth: 1,
+  borderTopColor: "#EEE",
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+}
 
-const $note: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+const $disclaimerText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.textDim,
-  fontSize: 12,
-  marginTop: spacing.md,
+  flex: 1,
 })

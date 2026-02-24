@@ -13,7 +13,7 @@ import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 import { Icon } from "@/components/Icon"
-import { Header } from "@/components/Header"
+import { ScreenHeader } from "@/components/ScreenHeader"
 
 export const TermsAndConditionsScreen: FC<DemoTabScreenProps<"TermsAndConditions">> = ({ navigation }) => {
   const { themed, theme } = useAppTheme()
@@ -49,25 +49,11 @@ export const TermsAndConditionsScreen: FC<DemoTabScreenProps<"TermsAndConditions
           } as any
         }
       >
-
-      <Header
-        title="Terms and Conditions"
-        safeAreaEdges={["top"]} 
-        LeftActionComponent={
-          <View style={$leftActionWrapper}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              accessibilityLabel="Go back"
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Icon icon="arrowLeft" size={24} color={"#fff"} />
-            </Pressable>
-          </View>
-        }
-        style={themed($headerStyle)}
-        titleStyle={themed($headerTitle)}
+      <ScreenHeader 
+        title="Account Settings" 
+        leftIcon="arrow_left" 
+        onLeftPress={() => navigation.goBack()} 
       />
-      
       <View style={themed($contentWrapper)}>
         <Text preset="subheading" style={{ marginBottom: 19 }}>TERMS AND CONDITIONS</Text>
         <Text size="xs" style={themed($lastUpdatedText)}>Last Updated: [Insert Date]</Text>
@@ -148,7 +134,7 @@ export const TermsAndConditionsScreen: FC<DemoTabScreenProps<"TermsAndConditions
           onPress={scrollToTop} 
           style={[$fab, { backgroundColor: theme.colors.palette.primary500 }]}
         >
-          <Icon icon="caretUp" size={24} color="#fff" />
+          <Icon icon="arrow_up" size={24} color="#fff" />
         </Pressable>
       )}
     </View>
