@@ -1,7 +1,7 @@
 const palette = {
   // Neutrals - Grays and Off-whites
-  neutral100: "#FFFFFF",
-  neutral200: "#F4F2F1",
+  neutral100: "#F9FAFB",
+  neutral200: "#efedec",
   neutral300: "#D7CEC9",
   neutral400: "#B6ACA6",
   neutral500: "#978F8A",
@@ -52,6 +52,7 @@ export const colors = {
   text: palette.neutral800,
   textDim: palette.neutral600,
   background: palette.neutral100,
+  childBackground: palette.neutral200,
   border: palette.neutral300,
 
   // Main brand tinting

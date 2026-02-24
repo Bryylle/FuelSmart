@@ -143,6 +143,8 @@ export const iconRegistry = {
   reset_focus: require("@assets/icons/reset_focus.png"),
   add_marker: require("@assets/icons/add_marker.png"),
   copy: require("@assets/icons/copy.png"),
+  view: require("@assets/icons/view.png"),
+  hidden: require("@assets/icons/hidden.png"),
 }
 
 const $imageStyleBase: ImageStyle = {
