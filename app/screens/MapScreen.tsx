@@ -23,6 +23,7 @@ import { spacing } from "@/theme/spacing"
 import { BrandListModal } from "@/components/BrandListModal"
 import { MunicipalityListModal } from "@/components/MunicipalityListModal"
 import { $gStyles } from "@/theme/styles"
+import { ContributorModal } from "@/components/ContributorModal"
 
 import GCashLogo from "@assets/icons/gcash.svg"
 import MayaLogo from "@assets/icons/maya.svg"
@@ -265,26 +266,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     }
   }
 
-  const [currentContributor, setCurrentContributor] = useState<Contributor | null>(null)
-  const [isContributorPressed, setIsContributorPressed] = useState(false)
-  const handlePressedContributor = async (loggedInUserID: string) => {
-    try {
-      setIsContributorPressed(true)
-      setCurrentContributor(null) 
-
-      const { data, error } = await supabase
-        .from("users")
-        .select(`id, phone, full_name, no_contributions, no_incorrect_reports, b_show_name, b_show_gcash, b_show_maya`)
-        .eq("id", loggedInUserID)
-        .single()
-
-      if (error) throw error
-      setCurrentContributor(data as unknown as Contributor)
-    } catch (e) {
-      console.error("Lazy load failed:", e)
-      setIsContributorPressed(false)
-      Alert.alert("Error", "Could not load contributor profile.")
-    }
+  const [contributorIdToShow, setContributorIdToShow] = useState<string | null>(null)
+  const [isContributorModalVisible, setIsContributorModalVisible] = useState(false)
+  const handleOpenContributor = (id: string) => {
+    setContributorIdToShow(id)
+    setIsContributorModalVisible(true)
   }
 
   const priceInputsRef = useRef<Record<string, string>>({});
@@ -1078,10 +1064,9 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
                             <TouchableOpacity 
                               onPress={() => {
                                 const uid = selectedStation.last_updated_by?.id
-                                if (uid) handlePressedContributor(uid)
-                              }}
+                                if (uid) handleOpenContributor(uid) // This triggers the lazy load in the child
+                              }} 
                             >
-                              {/* Added numberOfLines here as well to protect against very long names */}
                               <Text size="sm" style={styles.inline_031} numberOfLines={1}>
                                 {" "}by {getDisplayName(selectedStation.last_updated_by.full_name, selectedStation.last_updated_by.b_show_name)}
                               </Text>
@@ -1239,111 +1224,14 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       </Modal>
       {/* --STATION CARD DETAIL MODAL*/}
       {/* --CONTRIBUTOR MODAL */}
-      <Modal 
-        visible={isContributorPressed} 
-        transparent 
-        animationType="fade" 
-        onRequestClose={() => setIsContributorPressed(false)}
-        style={styles.inline_053}
-      >
-        <TouchableOpacity style={styles.brandModalOverlay} activeOpacity={1} onPress={() => setIsContributorPressed(false)}>
-          <View style={styles.userInfoCard}>
-            {!currentContributor ? (
-              <View style={styles.inline_054}>
-                <ActivityIndicator size="large" color={colors.palette.primary500} />
-                <Text text="Loading profile..." style={styles.inline_055} />
-              </View>
-            ) : (
-              <Animated.View entering={FadeIn}>
-                <View style={styles.profileHeader}>
-                  <View style={styles.avatarCircle}>
-                    <Text 
-                      style={styles.avatarText} 
-                      text={currentContributor?.full_name?.substring(0,1)?.toUpperCase() || ""} 
-                      size="xl" 
-                      weight="bold" 
-                    />
-                  </View>
-                  <View style={styles.nameContainer}>
-                    <View style={styles.tierRow}>
-                      <Text 
-                        preset="subheading" 
-                        weight="bold" 
-                        style={styles.inline_056} 
-                        numberOfLines={1}
-                        size="md"
-                      >
-                        {getDisplayName(currentContributor?.full_name, currentContributor?.b_show_name ?? true)}
-                      </Text>
-                      <Image
-                        source={
-                          currentContributor?.no_contributions < 50 ? ICON_MEDAL_BRONZE :
-                          currentContributor?.no_contributions < 100 ? ICON_MEDAL_SILVER :
-                          /*userData?.no_contributions >  100 ? */ ICON_MEDAL_GOLD
-                        } 
-                        style={styles.inline_057} resizeMode="contain"
-                      />
-                    </View>
-                    <Text style={styles.inline_058} size="xs">
-                      {
-                        currentContributor?.no_contributions < 50 ? "BRONZE CONTRIBUTOR" :
-                        currentContributor?.no_contributions < 100 ? "SILVER CONTRIBUTOR" :
-                        /*currentContributor?.no_contributions >  100 ? */ "GOLD CONTRIBUTOR"
-                      }
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.contributorStatsRow}>
-                  <View style={styles.contributorStatBox}>
-                    <Text weight="bold" style={styles.statValue}>{currentContributor?.no_contributions || 0}</Text>
-                    <Text size="xxs" style={styles.statLabel}>CONTRIBUTIONS</Text>
-                  </View>
-                  <View style={styles.contributorStatBox}>
-                    <Text weight="bold" style={styles.statValue}>{currentContributor?.no_incorrect_reports || 0}</Text>
-                    <Text size="xxs" style={styles.statLabel}>INCORRECT REPORTS</Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={styles.contributorPaymentContainer} onPress={() => handleCopyNumber(currentContributor?.phone || "")} activeOpacity={0.5}>
-                  {(currentContributor?.b_show_gcash || currentContributor?.b_show_maya) && currentContributor?.phone && (
-                    <View style={styles.contributorPaymentCard}>
-                      <View style={styles.contributorCardTopRow}>
-                          <Text size="xxs" weight="bold" style={styles.inline_059}>
-                            TIP VIA
-                          </Text>
-                        <Icon icon="copy" size={20} color={colors.palette.neutral400} />
-                      </View>
-
-                      <View style={styles.contributorCardBottomRow}>
-                        <View style={styles.contributorWalletGroup}>
-                            {currentContributor?.b_show_gcash && (
-                              <View style={styles.contributorWalletWrapper}>
-                                <GCashLogo width={32} height={20} />
-                              </View>
-                            )}
-                            {currentContributor?.b_show_maya && (
-                              <View style={styles.contributorWalletWrapper}>
-                                <MayaLogo width={32} height={20} />
-                              </View>
-                            )}
-                          </View>
-                        <Text weight="semiBold" style={styles.contributorPhoneNumber}>
-                          {currentContributor?.phone}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-
-            <TouchableOpacity style={[styles.closeBtn, styles.mt_12]} onPress={() => setIsContributorPressed(false)}>
-              <Text style={styles.inline_060}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <ContributorModal 
+        isVisible={isContributorModalVisible}
+        contributorId={contributorIdToShow}
+        onClose={() => {
+          setIsContributorModalVisible(false)
+          setContributorIdToShow(null)
+        }}
+      />
       {/* --CONTRIBUTOR MODAL */}
       {/* --UTILITY BUTTONS */}
       <View style={styles.utilityBtnContainer}>
