@@ -24,6 +24,7 @@ import { BrandListModal } from "@/components/BrandListModal"
 import { MunicipalityListModal } from "@/components/MunicipalityListModal"
 import { $gStyles } from "@/theme/styles"
 import { ContributorModal } from "@/components/ContributorModal"
+import { StationDetailModal } from "@/components/StationDetailModal"
 
 import GCashLogo from "@assets/icons/gcash.svg"
 import MayaLogo from "@assets/icons/maya.svg"
@@ -1033,195 +1034,23 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
       />
       {/* --SEARCH BAR BRAND PICKER MODAL */}
       {/* --STATION CARD DETAIL MODAL*/}
-      <Modal style={styles.inline_028} visible={!!selectedStation} animationType="slide" transparent onRequestClose={() => !isReporting && setSelectedStation(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
-          <View style={styles.modalOverlay}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => !isReporting && setSelectedStation(null)} />
-            
-            {selectedStation && (
-              <Animated.View entering={FadeIn} style={styles.detailCard}>
-                <TouchableOpacity onPress={() => {setSelectedStation(null); setIsReporting(false);}} style={styles.dismissHandle}>
-                  <Icon icon="caret_down" size={24} color="white" />
-                </TouchableOpacity>
-                
-                <View style={styles.innerContent}>
-                  <View style={styles.inline_029}>
-                    <View style={[styles.flex, { marginRight: spacing.sm }]}>
-                      <Text weight="bold" size="md" numberOfLines={1} ellipsizeMode="tail">{selectedStation.brand}</Text>
-                      <View style={styles.inline_030}>
-                        <View style={[{ flex: 1 }, styles.flexRow]}>
-                          <Text 
-                            size="sm" 
-                            style={styles.opacity_half} 
-                            numberOfLines={1} 
-                            ellipsizeMode="tail"
-                          >
-                            {selectedStation.city}
-                            {selectedStation.updated_at ? " • " + formatDistanceToNow(new Date(selectedStation.updated_at), { addSuffix: true }) : " • Recent"}
-                          </Text>
-                          {/* The Contributor section stays on the right */}
-                          {selectedStation.last_updated_by ? (
-                            <TouchableOpacity 
-                              onPress={() => {
-                                const uid = selectedStation.last_updated_by?.id
-                                if (uid) handleOpenContributor(uid) // This triggers the lazy load in the child
-                              }} 
-                            >
-                              <Text size="sm" style={styles.inline_031} numberOfLines={1}>
-                                {" "}by {getDisplayName(selectedStation.last_updated_by.full_name, selectedStation.last_updated_by.b_show_name)}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <Text size="sm" style={styles.inline_032} numberOfLines={1}>
-                              {" "}by {selectedStation.isPending ? "User Report" : "System"}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-
-                    {!selectedStation.isPending && (
-                      <TouchableOpacity onPress={toggleFavorite} style={[styles.favoriteBtn, selectedStation.fetchError && styles.opacity_half]} disabled={selectedStation.fetchError}>
-                        <Icon icon="star" color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"} size={32} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {selectedStation.isPending ? (
-                    <View style={styles.mt_12}>
-                      <View style={styles.inline_034}>
-                        <Text text="User Reported Location" size="xs" weight="bold" style={styles.inline_035} />
-                        <Text text="Is this station real? Help verify it for the community." size="xxs" style={styles.inline_035} />
-                        <View style={styles.inline_036}>
-                          {['regular_gas_name', 'premium_gas_name', 'sports_gas_name', 'regular_diesel_name', 'premium_diesel_name'].map((key) => (
-                            selectedStation[key] ? (
-                              <View key={key} style={styles.fuelTag}>
-                                <Text text={selectedStation[key]} size="xxs" weight="bold" style={styles.inline_015} />
-                              </View>
-                            ) : null
-                          ))}
-                        </View>
-                      </View>
-                      
-                      {loggedInUser?.id === selectedStation.reporter_id ? (
-                        <View style={styles.inline_037}>
-                          <View style={styles.inline_038}>
-                            <Text text="Waiting for others to verify your report..." size="xs" style={styles.opacity_half} />
-                          </View>
-                          <TouchableOpacity
-                            style={[styles.pendingFormBtns, styles.inline_039]}
-                            onPress={() => handleCancelMyReport(selectedStation.id)}
-                          >
-                            <Text 
-                              text="Cancel My Report"
-                              style={styles.inline_040}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={styles.inline_041}>
-                          {hasVoted ? (
-                            <View style={styles.inline_038}>
-                              <Text text="Your confirmation has been saved" size="xs" style={styles.opacity_half} />
-                            </View>
-                          ) : (
-                            <View style={styles.inline_042}>
-                              <TouchableOpacity 
-                                style={[styles.pendingFormBtns, styles.inline_043]} 
-                                onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}
-                              >
-                                <Text style={styles.inline_044}>Deny</Text>
-                              </TouchableOpacity>
-
-                              <TouchableOpacity 
-                                style={[styles.pendingFormBtns, styles.inline_045]} 
-                                onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}
-                              >
-                                <Text style={styles.inline_044}>Confirm</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  ) : (
-                    <View style={themed(styles.priceDashboard)}>
-                      {selectedStation.isLoading ? (
-                        <View style={styles.inline_046}>
-                          <ActivityIndicator size="large" color={colors.palette.primary500} />
-                          <Text size="sm" style={styles.inline_047}>Loading latest prices...</Text>
-                        </View>
-                      ) : selectedStation.fetchError ? (
-                        <View style={styles.inline_048}>
-                          <Icon icon="information" color={colors.palette.angry500} size={40} />
-                          <Text style={styles.inline_049} text="Sorry, there is a problem in this location." />
-                        </View>
-                      ) : (
-                        <ScrollView nestedScrollEnabled contentContainerStyle={styles.scrollPriceGrid}>
-                          <View style={styles.priceGridContainer}>
-                            {(() => {
-                              const fuel_types_config = FUEL_BRAND_MAP[selectedStation.brand]
-                              return Object.keys(fuel_types_config).map((key, index) => {
-                                if (!fuel_types_config[key]) return null;
-
-                                return (
-                                  <View key={key} style={styles.inline_050}>
-                                    <Text style={styles.fuelTypeLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{fuel_types_config[key]}</Text>
-                                    
-                                    {/* Toggle between Input for Reporting and Text for viewing */}
-                                    {isReporting ? (
-                                      <TextInput 
-                                        style={styles.priceInput} 
-                                        keyboardType="decimal-pad" 
-                                        defaultValue=""
-                                        placeholder="00.00" 
-                                        onChangeText={(val) => {
-                                          const cleaned = val
-                                          .replace(/,/g, ".")
-                                          .replace(/[^0-9.]/g, "")
-                                          .replace(/(\..*)\./g, "$1")
-                                          priceInputsRef.current[key] = cleaned;
-                                        }}
-                                        maxLength={5}
-                                      />
-                                    ) : ( 
-                                      <Text style={styles.fuelTypePrice}>
-                                        ₱{(Number(selectedStation[key]) || 0).toFixed(2)}
-                                      </Text> 
-                                    )}
-                                  </View>
-                                )
-                              })
-                            })()}
-                          </View>
-                        </ScrollView>
-                      )}
-                    </View>
-                  )}
-                </View>
-
-                {!selectedStation.isPending && !selectedStation.isLoading && (
-                  <View style={styles.stationDetailBtnWrapper}>
-                    <View style={styles.stationDetailBtnRow}>
-                      {isReporting ? (
-                        <>
-                          <TouchableOpacity style={[styles.pendingFormBtns, { backgroundColor: colors.childBackground }]} onPress={() => setIsReporting(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
-                          <TouchableOpacity style={[styles.pendingFormBtns, styles.bgPrimary500]} onPress={handleUpdatePrice}><Text style={{color: 'white', fontWeight: 'bold' }}>Submit</Text></TouchableOpacity>
-                        </>
-                      ) : (
-                        <>
-                          <TouchableOpacity style={[styles.pendingFormBtns, { backgroundColor: colors.palette.primary400 }, selectedStation.fetchError && styles.inline_052]} disabled={selectedStation.fetchError} onPress={showDirections}><Text style={{color: 'white', fontWeight: 'bold' }}>Directions</Text></TouchableOpacity>
-                          <TouchableOpacity style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]} disabled={selectedStation.fetchError} onPress={() => setIsReporting(true)}><Text style={{color: 'white', fontWeight: 'bold' }}>Update Price</Text></TouchableOpacity>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </Animated.View>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <StationDetailModal
+        selectedStation={selectedStation}
+        setSelectedStation={setSelectedStation}
+        isReporting={isReporting}
+        setIsReporting={setIsReporting}
+        favorites={favorites}
+        toggleFavorite={toggleFavorite}
+        handleUpdatePrice={handleUpdatePrice}
+        priceInputsRef={priceInputsRef}
+        showDirections={showDirections}
+        onOpenContributor={handleOpenContributor}
+        getDisplayName={getDisplayName}
+        loggedInUserId={loggedInUser?.id}
+        hasVoted={hasVoted}
+        handleVerifyOrDenyPendingMarker={handleVerifyOrDenyPendingMarker}
+        handleCancelMyReport={handleCancelMyReport}
+      />
       {/* --STATION CARD DETAIL MODAL*/}
       {/* --CONTRIBUTOR MODAL */}
       <ContributorModal 

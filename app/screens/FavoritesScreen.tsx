@@ -1,21 +1,18 @@
-import { FC, useCallback, useEffect, useState } from "react"
+import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
   View,
   ViewStyle,
   TextStyle,
-  TouchableOpacity,
-  Linking,
-  Alert,
-  Modal,
-  Image,
 } from "react-native"
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated"
+import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated"
 import { formatDistanceToNow } from "date-fns"
 
 import { Card } from "@/components/Card"
@@ -23,62 +20,135 @@ import { EmptyState } from "@/components/EmptyState"
 import { Icon } from "@/components/Icon"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
+import { ContributorModal } from "@/components/ContributorModal"
+import { StationDetailModal } from "@/components/StationDetailModal"
+
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
+import { spacing } from "@/theme/spacing"
 import type { ThemedStyle } from "@/theme/types"
-import { delay } from "@/utils/delay"
 
+import { delay } from "@/utils/delay"
 import { supabase } from "@/services/supabase"
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
 
-const ICON_MEDAL_GOLD = require("@assets/icons/download/medal_gold.png")
-const ICON_MEDAL_SILVER = require("@assets/icons/download/medal_silver.png")
-const ICON_MEDAL_BRONZE = require("@assets/icons/download/medal_bronze.png")
-
+/**
+ * Matches MapScreen behavior.
+ */
 const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
   if (!fullName) return "Anonymous"
   if (bShowName) return fullName
   return `${fullName.charAt(0)}*****`
 }
 
+type FuelType = "gas" | "diesel" | null
+
+type FuelSubType =
+  | "regular_gas"
+  | "premium_gas"
+  | "sports_gas"
+  | "regular_diesel"
+  | "premium_diesel"
+  | null
+
+const FUEL_SUBTYPE_LABELS: Record<Exclude<FuelSubType, null>, string> = {
+  regular_gas: "Regular",
+  premium_gas: "Premium",
+  sports_gas: "Sports",
+  regular_diesel: "Regular",
+  premium_diesel: "Premium",
+}
+
+type SortOrder = "asc" | "desc"
+
+/**
+ * The StationDetailModal expects `last_updated_by`.
+ * Favorites query returns joined user record as `users` (alias).
+ */
+export type NormalizedStation = any & {
+  last_updated_by?: {
+    id: string
+    full_name: string
+    b_show_name: boolean
+  }
+  isPending?: boolean
+  isLoading?: boolean
+  fetchError?: boolean
+}
+
+type ActiveChip = {
+  key: "fuelType" | "fuel" | "sort"
+  label: string
+}
+
 export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => {
-  const { themed, theme: { colors } } = useAppTheme()
+  const {
+    themed,
+    theme: { colors },
+  } = useAppTheme()
+
   const [favoriteStations, setFavoriteStations] = useState<any[]>([])
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isError, setIsError] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-  const [showUserModal, setShowUserModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<any>(null)
+  // Contributor modal
+  const [contributorIdToShow, setContributorIdToShow] = useState<string | null>(null)
+  const [isContributorModalVisible, setIsContributorModalVisible] = useState(false)
+  const handleOpenContributor = (id: string) => {
+    setContributorIdToShow(id)
+    setIsContributorModalVisible(true)
+  }
+
+  // Station detail modal
+  const [selectedStation, setSelectedStation] = useState<NormalizedStation | null>(null)
+  const [isReporting, setIsReporting] = useState(false)
+  const priceInputsRef = useRef<Record<string, string>>({})
+
+  // Filters + sort
+  const [activeFuelType, setActiveFuelType] = useState<FuelType>(null)
+  const [activeFuelSubType, setActiveFuelSubType] = useState<FuelSubType>(null)
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc")
+
+  // UX: users can collapse filters; header row is fully tappable
+  const [filtersExpanded, setFiltersExpanded] = useState(true)
+
+  // UX: auto-collapse filters after user makes a selection
+  const collapseFiltersSoon = useCallback(() => {
+    requestAnimationFrame(() => setFiltersExpanded(false))
+  }, [])
 
   const fetchFavorites = useCallback(async () => {
     try {
       setIsError(false)
+
       const { data: authData, error: authError } = await supabase.auth.getUser()
       if (authError || !authData.user) throw new Error("Auth failed")
-      
       setCurrentUserId(authData.user.id)
 
       const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('favorite_stations')
-        .eq('id', authData.user.id)
+        .from("users")
+        .select("favorite_stations")
+        .eq("id", authData.user.id)
         .single()
-      
+
       if (userError) throw userError
 
-      const favoriteIds = userData?.favorite_stations || []
+      const ids = userData?.favorite_stations ?? []
+      setFavoriteIds(ids)
 
-      if (favoriteIds.length > 0) {
+      if (ids.length > 0) {
+        // Alias becomes `station.users`
         const { data: stations, error: stationsError } = await supabase
-          .from('fuel_stations')
+          .from("fuel_stations")
           .select(`*, users:last_updated_by (*)`)
-          .in('id', favoriteIds)
-        
+          .in("id", ids)
+
         if (stationsError) throw stationsError
-        setFavoriteStations(stations || [])
+        setFavoriteStations(stations ?? [])
       } else {
         setFavoriteStations([])
       }
@@ -104,27 +174,486 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
 
   const handleRemoveFavorite = async (stationId: string) => {
     if (!currentUserId) return
-    const newFavs = favoriteStations.filter(s => s.id !== stationId).map(s => s.id)
-    const { error } = await supabase.from('users').update({ favorite_stations: newFavs }).eq('id', currentUserId)
-    if (!error) setFavoriteStations(prev => prev.filter(s => s.id !== stationId))
+
+    const newFavIds = favoriteIds.filter((id) => id !== stationId)
+    const { error } = await supabase
+      .from("users")
+      .update({ favorite_stations: newFavIds })
+      .eq("id", currentUserId)
+
+    if (error) {
+      Alert.alert("Error", "Could not update favorites.")
+      return
+    }
+
+    setFavoriteIds(newFavIds)
+    setFavoriteStations((prev) => prev.filter((s) => s.id !== stationId))
+
+    // Close modal if user removed currently open station
+    setSelectedStation((prev: NormalizedStation | null) => (prev?.id === stationId ? null : prev))
   }
 
-  const openUserModal = (user: any) => {
-    setSelectedUser(user)
-    setShowUserModal(true)
+  const showDirections = () => {
+    if (!selectedStation) return
+    const { latitude, longitude, brand } = selectedStation
+    const label = encodeURIComponent(brand)
+    const url = Platform.select({
+      ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
+      android: `geo:0,0?q=${latitude},${longitude}(${label})`,
+    })
+    if (url) Linking.openURL(url)
   }
+
+  const toggleFavoriteFromModal = async () => {
+    if (!selectedStation) return
+    await handleRemoveFavorite(selectedStation.id)
+  }
+
+  const handleUpdatePrice = async () => {
+    if (!selectedStation || !currentUserId) {
+      Alert.alert("Error", "User or Station information is missing.")
+      return
+    }
+
+    const getValidPrice = (key: string) => {
+      const input = priceInputsRef.current[key]
+      if (input && input.trim() !== "") {
+        const parsed = parseFloat(input)
+        if (!isNaN(parsed)) return parsed
+      }
+      return Number(selectedStation[key]) || 0
+    }
+
+    const rpcData = {
+      _station_id: selectedStation.id,
+      _user_id: currentUserId,
+      _regular_gas: getValidPrice("regular_gas"),
+      _premium_gas: getValidPrice("premium_gas"),
+      _sports_gas: getValidPrice("sports_gas"),
+      _regular_diesel: getValidPrice("regular_diesel"),
+      _premium_diesel: getValidPrice("premium_diesel"),
+    }
+
+    try {
+      const { error } = await supabase.rpc("submit_fuel_report", rpcData)
+      if (error) {
+        Alert.alert("Update Failed", error.message)
+        return
+      }
+
+      Alert.alert("Success", "Station prices updated!")
+      setIsReporting(false)
+      priceInputsRef.current = {}
+
+      await fetchFavorites()
+      setSelectedStation(null)
+    } catch (_err) {
+      Alert.alert("Error", "A connection error occurred.")
+    }
+  }
+
+  const availableSubTypes = useMemo(() => {
+    if (activeFuelType === "gas") return ["regular_gas", "premium_gas", "sports_gas"] as const
+    if (activeFuelType === "diesel") return ["regular_diesel", "premium_diesel"] as const
+    return [] as const
+  }, [activeFuelType])
+
+  // Keep subtype valid/consistent when fuel type changes
+  useEffect(() => {
+    if (!activeFuelType) {
+      setActiveFuelSubType(null)
+      return
+    }
+
+    if (activeFuelType === "gas") {
+      if (!activeFuelSubType || !["regular_gas", "premium_gas", "sports_gas"].includes(activeFuelSubType)) {
+        setActiveFuelSubType("regular_gas")
+      }
+    }
+
+    if (activeFuelType === "diesel") {
+      if (!activeFuelSubType || !["regular_diesel", "premium_diesel"].includes(activeFuelSubType)) {
+        setActiveFuelSubType("regular_diesel")
+      }
+    }
+  }, [activeFuelType])
+
+  const filteredAndSortedStations = useMemo(() => {
+    if (!favoriteStations.length) return []
+
+    const filtered = favoriteStations.filter((s) => {
+      if (activeFuelType) {
+        const cfg = FUEL_BRAND_MAP[s.brand] ?? {}
+        const wants =
+          activeFuelType === "gas"
+            ? ["regular_gas", "premium_gas", "sports_gas"]
+            : ["regular_diesel", "premium_diesel"]
+
+        const hasAny = wants.some((k) => !!cfg[k])
+        if (!hasAny) return false
+      }
+      return true
+    })
+
+    if (!activeFuelSubType) return filtered
+
+    const withKey = filtered.map((s, idx) => ({ s, idx }))
+
+    const getPrice = (st: any) => {
+      const n = parseFloat(st[activeFuelSubType])
+      return !isNaN(n) ? n : 0
+    }
+
+    withKey.sort((a, b) => {
+      const pa = getPrice(a.s)
+      const pb = getPrice(b.s)
+      const aMissing = pa <= 0
+      const bMissing = pb <= 0
+
+      if (aMissing && bMissing) return a.idx - b.idx
+      if (aMissing) return 1
+      if (bMissing) return -1
+
+      const diff = sortOrder === "asc" ? pa - pb : pb - pa
+      if (diff != 0) return diff
+      return a.idx - b.idx
+    })
+
+    return withKey.map((x) => x.s)
+  }, [favoriteStations, activeFuelType, activeFuelSubType, sortOrder])
+
+  const hasActiveFilters = activeFuelType !== null
+
+  const clearFilters = () => {
+    setActiveFuelType(null)
+    setActiveFuelSubType(null)
+    setSortOrder("asc")
+    collapseFiltersSoon()
+  }
+
+  /**
+   * Active filter chips:
+   * - Show only non-default values (keeps UI clean).
+   * - Sort chip shows only if user picked 'desc'.
+   */
+  const activeChips: ActiveChip[] = useMemo(() => {
+    const chips: ActiveChip[] = []
+
+    if (activeFuelType) {
+      chips.push({
+        key: "fuelType",
+        label: activeFuelType === "gas" ? "Gasoline" : "Diesel",
+      })
+    }
+
+    if (activeFuelSubType) {
+      chips.push({
+        key: "fuel",
+        label: FUEL_SUBTYPE_LABELS[activeFuelSubType as Exclude<FuelSubType, null>],
+      })
+    }
+
+    if (activeFuelSubType && sortOrder === "desc") {
+      chips.push({
+        key: "sort",
+        label: "Highest → Lowest",
+      })
+    }
+
+    return chips
+  }, [activeFuelType, activeFuelSubType, sortOrder])
+
+  const removeChip = useCallback(
+    (key: ActiveChip["key"]) => {
+      switch (key) {
+        case "fuelType":
+          setActiveFuelType(null)
+          setActiveFuelSubType(null)
+          setSortOrder("asc")
+          break
+        case "fuel":
+          // Keep fuel type filter, but stop sorting by specific fuel
+          setActiveFuelSubType(null)
+          setSortOrder("asc")
+          break
+        case "sort":
+          setSortOrder("asc")
+          break
+      }
+    },
+    [],
+  )
+
+  const normalizeForModal = useCallback((station: any): NormalizedStation => {
+    return {
+      ...station,
+      last_updated_by: station.users
+        ? {
+            id: station.users.id,
+            full_name: station.users.full_name,
+            b_show_name: station.users.b_show_name,
+          }
+        : undefined,
+      isPending: false,
+      isLoading: false,
+      fetchError: false,
+    }
+  }, [])
+
+  const openStationDetail = useCallback(
+    (station: any) => {
+      setSelectedStation(normalizeForModal(station))
+      setIsReporting(false)
+      priceInputsRef.current = {}
+    },
+    [normalizeForModal],
+  )
+
+  // Filter selection handlers (auto-collapse)
+  const onSelectFuelType = (type: FuelType) => {
+    setActiveFuelType(type)
+    if (!type) {
+      setActiveFuelSubType(null)
+      setSortOrder("asc")
+    } else {
+      setActiveFuelSubType(type === "gas" ? "regular_gas" : "regular_diesel")
+    }
+    collapseFiltersSoon()
+  }
+
+  const onSelectFuelSubType = (sub: Exclude<FuelSubType, null>) => {
+    setActiveFuelSubType(sub)
+    collapseFiltersSoon()
+  }
+
+  const onSelectSort = (order: SortOrder) => {
+    setSortOrder(order)
+    collapseFiltersSoon()
+  }
+
+  const ListHeader = (
+    <View>
+      {favoriteStations.length > 0 && (
+        <View style={themed($heading)}>
+          <View style={$headerRow}>
+            <Text preset="heading" text="Favorite Stations" />
+            <View style={$headerPills}>
+              <View style={[$pill, { backgroundColor: colors.palette.neutral200 }]}> 
+                <Text size="xxs" weight="bold" style={{ color: colors.text }}>
+                  {filteredAndSortedStations.length}/{favoriteStations.length}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {favoriteStations.length > 0 && (
+        <View style={themed($filterCard)}>
+          {/* Filters header row: entire row (except Clear) toggles expand/collapse */}
+          <View style={$filterHeaderRow}>
+            <Pressable
+              onPress={() => setFiltersExpanded((p) => !p)}
+              style={$filterHeaderPressable}
+              accessibilityRole="button"
+              accessibilityLabel={filtersExpanded ? "Collapse filters" : "Expand filters"}
+              hitSlop={12}
+            >
+              <View style={$filterHeaderLeft}>
+                <Text weight="bold" size="sm" style={{ color: colors.text }}>
+                  Filters
+                </Text>
+                <Icon
+                  icon={filtersExpanded ? "caret_down" : "caret_right"}
+                  size={18}
+                  color={colors.palette.neutral500}
+                />
+              </View>
+            </Pressable>
+
+            {hasActiveFilters && (
+              <TouchableOpacity
+                onPress={clearFilters}
+                style={[$clearBtn, { borderColor: colors.palette.primary500 }]}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Clear all filters"
+                hitSlop={12}
+              >
+                <Icon icon="close" size={14} color={colors.palette.primary500} />
+                <Text size="xxs" weight="bold" style={{ color: colors.palette.primary500 }}>
+                  Clear
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Active chips row (always visible if any filters applied) */}
+          {activeChips.length > 0 && (
+            <View style={$chipRow}>
+              {activeChips.map((chip) => (
+                <View
+                  key={chip.key}
+                  style={[$chipContainer, { borderColor: colors.palette.neutral300 }]}
+                >
+                  {/* Label area expands filters */}
+                  <Pressable
+                    onPress={() => setFiltersExpanded(true)}
+                    style={({ pressed }) => [$chipLabelArea, pressed && { opacity: 0.85 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Active filter: ${chip.label}. Tap to edit.`}
+                    hitSlop={8}
+                  >
+                    <Text size="xxs" weight="bold" style={{ color: colors.palette.neutral700 }}>
+                      {chip.label}
+                    </Text>
+                  </Pressable>
+
+                  {/* Close area removes this filter only */}
+                  <Pressable
+                    onPress={() => removeChip(chip.key)}
+                    style={({ pressed }) => [$chipCloseArea, pressed && { opacity: 0.75 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${chip.label}`}
+                    hitSlop={8}
+                  >
+                    <Text size="sm" style={{ color: colors.palette.neutral700, lineHeight: 16 }}>
+                      ×
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {filtersExpanded && (
+            <Animated.View entering={FadeInUp} exiting={FadeOutUp}>
+              <View style={{ marginTop: spacing.sm }}>
+                <Text weight="bold" size="xs" style={{ color: colors.text }}>
+                  Fuel Type
+                </Text>
+
+                <View style={$segmentedControl(colors.palette.neutral200)}>
+                  {([null, "gas", "diesel"] as const).map((type) => (
+                    <TouchableOpacity
+                      key={type ?? "none"}
+                      style={[$segment, activeFuelType === type && $segmentActive]}
+                      onPress={() => onSelectFuelType(type)}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel={type === "gas" ? "Fuel type Gasoline" : type === "diesel" ? "Fuel type Diesel" : "Fuel type None"}
+                    >
+                      <Text
+                        size="xxs"
+                        style={[
+                          $segmentText(colors.palette.neutral500),
+                          activeFuelType === type && $segmentTextActive(colors.palette.primary500),
+                        ]}
+                      >
+                        {type === "gas" ? "Gasoline" : type === "diesel" ? "Diesel" : "None"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {activeFuelType && (
+                  <>
+                    <Text weight="bold" size="xs" style={{ color: colors.text, marginTop: spacing.sm }}>
+                      Fuel
+                    </Text>
+                    <View style={$segmentedControl(colors.palette.neutral200)}>
+                      {availableSubTypes.map((sub) => (
+                        <TouchableOpacity
+                          key={sub}
+                          style={[$segment, activeFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]}
+                          onPress={() => onSelectFuelSubType(sub)}
+                          activeOpacity={0.9}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Fuel subtype ${FUEL_SUBTYPE_LABELS[sub]}`}
+                        >
+                          <Text
+                            size="xxs"
+                            style={[
+                              $segmentText(colors.palette.neutral500),
+                              activeFuelSubType === sub && $segmentTextActive(colors.palette.primary500),
+                              { fontSize: 10 },
+                            ]}
+                          >
+                            {FUEL_SUBTYPE_LABELS[sub]}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <Text weight="bold" size="xs" style={{ color: colors.text, marginTop: spacing.sm }}>
+                      Sort
+                    </Text>
+                    <View style={$segmentedControl(colors.palette.neutral200)}>
+                      <TouchableOpacity
+                        style={[$segment, sortOrder === "asc" && $segmentActive]}
+                        onPress={() => onSelectSort("asc")}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel="Sort lowest to highest"
+                      >
+                        <Text
+                          size="xxs"
+                          style={[
+                            $segmentText(colors.palette.neutral500),
+                            sortOrder === "asc" && $segmentTextActive(colors.palette.primary500),
+                          ]}
+                        >
+                          Lowest → Highest
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[$segment, sortOrder === "desc" && $segmentActive]}
+                        onPress={() => onSelectSort("desc")}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel="Sort highest to lowest"
+                      >
+                        <Text
+                          size="xxs"
+                          style={[
+                            $segmentText(colors.palette.neutral500),
+                            sortOrder === "desc" && $segmentTextActive(colors.palette.primary500),
+                          ]}
+                        >
+                          Highest → Lowest
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text size="xxs" style={$filterHint(colors.palette.neutral500)}>
+                      Tip: Select a fuel type and we’ll sort your favorites by that fuel’s price.
+                    </Text>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          )}
+        </View>
+      )}
+    </View>
+  )
 
   return (
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$styles.flex1}>
       <FlatList
         contentContainerStyle={[
           themed([$styles.container, $listContentContainer]),
-          (favoriteStations.length === 0 || isError) && { flexGrow: 1, justifyContent: 'center' }
+          (filteredAndSortedStations.length === 0 || isError) && {
+            flexGrow: 1,
+            justifyContent: "center",
+          },
         ]}
-        data={isError ? [] : favoriteStations}
+        data={isError ? [] : filteredAndSortedStations}
         refreshing={refreshing}
         onRefresh={manualRefresh}
         keyExtractor={(item) => item.id}
+        ListHeaderComponent={!isError ? ListHeader : null}
         ListEmptyComponent={
           isLoading ? (
             <ActivityIndicator size="large" color={colors.palette.primary500} />
@@ -132,181 +661,277 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
             <EmptyState
               preset="generic"
               style={{ marginTop: 0 }}
-              heading={isError ? "Connection Error" : "No Favorites Yet"}
-              content={isError 
-                ? "Cannot load your favorites. Please check your internet connection." 
-                : "Add gas stations to your favorites to see them here."
+              heading={isError ? "Connection Error" : hasActiveFilters ? "No Matches" : "No Favorites Yet"}
+              content={
+                isError
+                  ? "Cannot load your favorites. Please check your internet connection."
+                  : hasActiveFilters
+                    ? "Try adjusting your fuel filters."
+                    : "Add gas stations to your favorites to see them here."
               }
-              button="Refresh"
-              buttonOnPress={manualRefresh}
+              button={isError ? "Refresh" : hasActiveFilters ? "Clear Filters" : "Refresh"}
+              buttonOnPress={
+                isError
+                  ? manualRefresh
+                  : hasActiveFilters
+                    ? clearFilters
+                    : manualRefresh
+              }
             />
           )
         }
-        ListHeaderComponent={(!isError && favoriteStations.length > 0) ? (
-          <View style={themed($heading)}>
-            <Text preset="heading" text="Favorite Stations" />
-          </View>
-        ) : null}
         renderItem={({ item }) => (
-          <StationCard 
-            station={item} 
-            onUnfavorite={() => handleRemoveFavorite(item.id)} 
-            onPressUser={(user) => openUserModal(user)}
+          <FavoriteStationCard
+            station={item}
+            activeFuelSubType={activeFuelSubType}
+            onOpenDetail={() => openStationDetail(item)}
+            onOpenContributor={handleOpenContributor}
           />
         )}
       />
 
-      <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
-        <TouchableOpacity style={$modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
-          <View style={$modalContent}>
-             <View style={$profileHeader}>
-                <View style={$avatarCircle}>
-                   <Text 
-                      style={$avatarText} 
-                      text={selectedUser?.full_name?.substring(0,1)?.toUpperCase() || ""} 
-                      size="xl" 
-                      weight="bold" 
-                    />
-                </View>
-                <View style={$nameContainer}>
-                  <View style={$tierRow}>
-                    <Text preset="subheading" weight="bold" style={{ color: "black", flexShrink: 1 }} numberOfLines={1}>
-                      {getDisplayName(selectedUser?.full_name, selectedUser?.b_show_name ?? true)}
-                    </Text>
-                    <Image 
-                      source={
-                          selectedUser?.no_contributions < 50 ? ICON_MEDAL_BRONZE : 
-                          selectedUser?.no_contributions < 100 ? ICON_MEDAL_SILVER :
-                          /*userData?.no_contributions >  100 ? */ ICON_MEDAL_GOLD
-                      }  style={{ width: 30, height: 30, marginLeft: 8 }} resizeMode="contain" 
-                    />
-                  </View>
-                  <Text style={{ color: "#666", fontSize: 14 }}>Rank: Gold Contributor</Text>
-                </View>
-             </View>
-             <View style={$statsRow}>
-                <View style={$statBox}><Text weight="bold" style={$statValue}>{selectedUser?.no_contributions || 0}</Text><Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text></View>
-                <View style={$statBox}><Text weight="bold" style={$statValue}>{selectedUser?.no_likes || 0}</Text><Text size="xxs" style={$statLabel}>LIKES</Text></View>
-             </View>
-             <TouchableOpacity style={$closeBtn} onPress={() => setShowUserModal(false)}>
-                <Text style={{ color: "white", fontWeight: "600" }}>Close</Text>
-             </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <StationDetailModal
+        selectedStation={selectedStation}
+        setSelectedStation={setSelectedStation}
+        isReporting={isReporting}
+        setIsReporting={setIsReporting}
+        favorites={favoriteIds}
+        toggleFavorite={toggleFavoriteFromModal}
+        handleUpdatePrice={handleUpdatePrice}
+        priceInputsRef={priceInputsRef}
+        showDirections={showDirections}
+        onOpenContributor={handleOpenContributor}
+        getDisplayName={getDisplayName}
+        loggedInUserId={currentUserId}
+        hasVoted={false}
+        handleVerifyOrDenyPendingMarker={() => {}}
+        handleCancelMyReport={() => {}}
+      />
+
+      <ContributorModal
+        isVisible={isContributorModalVisible}
+        contributorId={contributorIdToShow}
+        onClose={() => {
+          setIsContributorModalVisible(false)
+          setContributorIdToShow(null)
+        }}
+      />
     </Screen>
   )
 }
 
-const StationCard = ({ station, onUnfavorite, onPressUser }: { station: any, onUnfavorite: () => void, onPressUser: (user: any) => void }) => {
-  const { theme: { colors }, themed } = useAppTheme()
-  const [expanded, setExpanded] = useState(false)
-  const height = useSharedValue(0)
+const FavoriteStationCard = ({
+  station,
+  activeFuelSubType,
+  onOpenDetail,
+  onOpenContributor,
+}: {
+  station: any
+  activeFuelSubType: FuelSubType
+  onOpenDetail: () => void
+  onOpenContributor: (id: string) => void
+}) => {
+  const {
+    theme: { colors },
+    themed,
+  } = useAppTheme()
 
-  // We ensure fuelConfig is at least an empty object to prevent the "undefined" crash
-  const fuelConfig = FUEL_BRAND_MAP[station.brand] || {}
-
-  const handlePressCard = () => {
-    const fuelKeys = Object.keys(fuelConfig)
-    
-    // Determine height: If brand not found (length 0), we give it a default height 
-    // so it still expands to show "No data" or at least doesn't stay frozen.
-    const targetHeight = fuelKeys.length > 3 ? 280 : 220 
-    
-    height.value = withTiming(expanded ? 0 : targetHeight, { duration: 250 })
-    setExpanded(!expanded)
-  }
-
-  const animatedStyle = useAnimatedStyle(() => ({ height: height.value, overflow: "hidden" }))
+  const badgePrice = useMemo(() => {
+    if (!activeFuelSubType) return null
+    const v = parseFloat(station[activeFuelSubType]) || 0
+    return v > 0 ? v : null
+  }, [activeFuelSubType, station])
 
   return (
     <Card
       style={themed([$item])}
-      onPress={handlePressCard}
+      onPress={onOpenDetail}
       HeadingComponent={
         <View style={$cardHeader}>
           <View style={$titleRow}>
-            <Text weight="bold" size="md" style={$stationName}>{station.brand}</Text>
-            <TouchableOpacity onPress={onUnfavorite} style={$topRightButton}>
-              <Icon icon="star" size={30} color={colors.palette.primary500} />
-            </TouchableOpacity>
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text weight="bold" size="md" style={$stationName} numberOfLines={1}>
+                {station.brand}
+              </Text>
+
+              {badgePrice !== null && (
+                <View style={[$pricePill, { borderColor: colors.palette.primary500 }]}> 
+                  <Text size="xxs" weight="bold" style={{ color: colors.palette.primary500 }}>
+                    ₱{badgePrice.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <Icon icon="caret_right" size={18} color={colors.palette.neutral500} />
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
-            <Text size="xxs" style={$metadataText}>
-                {station.city} • Updated {station.updated_at ? formatDistanceToNow(new Date(station.updated_at), { addSuffix: true }) : "recently"}
+
+          <View style={$metaRow}>
+            <Text size="xxs" style={[$metadataText, { color: colors.palette.neutral500 }]}>
+              {station.city} • Updated {station.updated_at ? formatDistanceToNow(new Date(station.updated_at), { addSuffix: true }) : "recently"}
             </Text>
-            {station.users ?  (
-              <TouchableOpacity onPress={() => onPressUser(station.users)}>
-                <Text size="xxs" style={[{ color: "black", fontWeight: 'bold' }, $metadataText]}>
+
+            {station.users ? (
+              <TouchableOpacity
+                onPress={(e: any) => {
+                  e?.stopPropagation?.()
+                  onOpenContributor(station.users.id)
+                }}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="View contributor"
+              >
+                <Text size="xxs" style={[$metadataText, { color: colors.palette.primary500, fontWeight: "700" }]}>
                   {" "}by {getDisplayName(station.users.full_name, station.users.b_show_name)}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text size="xxs" style={[{ color: "#8E8E93", fontWeight: 'bold' }, $metadataText]}>
+              <Text size="xxs" style={[$metadataText, { color: colors.palette.neutral500, fontWeight: "700" }]}>
                 {" "}by System
               </Text>
             )}
           </View>
+
+          <Text size="xxs" style={[$tapHint, { color: colors.palette.neutral500 }]}>
+            Tap to view details, directions, or update prices
+          </Text>
         </View>
-      }
-      FooterComponent={
-        <Animated.View style={animatedStyle}>
-          <View style={$priceDashboard}>
-            <View style={$priceGridContainer}>
-              {Object.keys(fuelConfig).length > 0 ? (
-                Object.keys(fuelConfig).map((key, index) => (
-                  <View key={key} style={$dataEntry}>
-                    <Text style={$dataLabel}>{fuelConfig[key]}</Text>
-                    <Text style={$dataValue}>₱{(Number(station[key]) || 0).toFixed(2)}</Text>
-                    {(index + 1) % 3 !== 0 && <View style={$verticalDivider} />}
-                  </View>
-                ))
-              ) : (
-                <Text style={{ textAlign: 'center', width: '100%', opacity: 0.5 }}>Price data unavailable</Text>
-              )}
-            </View>
-          </View>
-          <View style={$buttonRow}>
-            <TouchableOpacity style={$directionsButton} onPress={() => Linking.openURL(`google.navigation:q=${station.latitude},${station.longitude}`)}>
-              <Icon icon="directions" color="white" size={20} /><Text style={$buttonText}>Directions</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[$directionsButton, { backgroundColor: colors.palette.primary500 }]} onPress={() => Alert.alert("Update", "Navigate to Map to update prices.")}>
-              <Icon icon="price_update" color="white" size={20} /><Text style={$buttonText}>Update</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
       }
     />
   )
 }
 
-// Styles remain unchanged
-const $cardHeader: ViewStyle = { marginBottom: 8 }
-const $titleRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }
-const $stationName: TextStyle = { flex: 1 }
-const $metadataText: TextStyle = { opacity: 0.6, marginTop: 4 }
-const $priceDashboard: ViewStyle = { backgroundColor: "#F2F2F7", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 8, borderWidth: 1, borderColor: "#E5E5EA", marginVertical: 12 }
-const $priceGridContainer: ViewStyle = { flexDirection: "row", flexWrap: "wrap", rowGap: 16 }
-const $dataEntry: ViewStyle = { width: "33.33%", alignItems: "center", justifyContent: "center" }
-const $verticalDivider: ViewStyle = { position: 'absolute', right: 0, height: '60%', width: 1, backgroundColor: "#D1D1D6" }
-const $dataLabel: TextStyle = { color: "#8E8E93", fontSize: 10, fontWeight: "600" }
-const $dataValue: TextStyle = { color: "#1C1C1E", fontSize: 18, fontWeight: "700" }
-const $buttonRow: ViewStyle = { flexDirection: "row", justifyContent: "space-between", marginTop: 4 }
-const $directionsButton: ViewStyle = { flexDirection: "row", backgroundColor: "#605e5e", paddingVertical: 10, borderRadius: 20, alignItems: "center", width: '48%', justifyContent: "center" }
-const $buttonText: TextStyle = { color: "white", marginLeft: 8, fontWeight: "600", fontSize: 14 }
-const $topRightButton: ViewStyle = { paddingLeft: 8 }
-const $listContentContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ paddingHorizontal: spacing.lg, paddingTop: spacing.lg + spacing.xl, paddingBottom: spacing.lg })
+// ---------------- Styles ----------------
+const $listContentContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.lg,
+  paddingTop: spacing.lg,
+  paddingBottom: spacing.lg,
+})
+
 const $heading: ThemedStyle<ViewStyle> = ({ spacing }) => ({ marginBottom: spacing.md })
-const $item: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({ padding: spacing.md, marginTop: spacing.md, backgroundColor: colors.palette.neutral100, borderRadius: 20 })
-const $modalOverlay: ViewStyle = { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }
-const $modalContent: ViewStyle = { backgroundColor: "white", width: "90%", borderRadius: 24, padding: 24 }
-const $profileHeader: ViewStyle = { flexDirection: "row", alignItems: "center", marginBottom: 20 }
-const $avatarCircle: ViewStyle = { width: 70, height: 70, borderRadius: 35, backgroundColor: "#E5E5EA", alignItems: "center", justifyContent: "center", marginRight: 16 }
-const $avatarText: TextStyle = { color: "#1737ba" }
-const $nameContainer: ViewStyle = { flex: 1 }
-const $tierRow: ViewStyle = { flexDirection: "row", alignItems: "center" }
-const $statsRow: ViewStyle = { flexDirection: "row", backgroundColor: "#F2F2F7", borderRadius: 16, padding: 16, marginBottom: 12 }
-const $statBox: ViewStyle = { flex: 1, alignItems: "center" }
-const $statValue: TextStyle = { color: "#1C1C1E", fontSize: 18 }
-const $statLabel: TextStyle = { color: "#8E8E93", marginTop: 4 }
-const $closeBtn: ViewStyle = { backgroundColor: "#1737ba", paddingVertical: 14, borderRadius: 16, alignItems: "center" }
+
+const $item: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  padding: spacing.md,
+  marginTop: spacing.md,
+  backgroundColor: colors.palette.neutral100,
+  borderRadius: 18,
+})
+
+const $cardHeader: ViewStyle = { gap: 6 }
+
+const $titleRow: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+}
+
+const $stationName: TextStyle = { flex: 1 }
+const $metaRow: ViewStyle = { flexDirection: "row", flexWrap: "wrap", alignItems: "center" }
+const $metadataText: TextStyle = { opacity: 0.85 }
+
+const $tapHint: TextStyle = {
+  opacity: 0.8,
+  marginTop: 2,
+}
+
+const $headerRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+}
+
+const $headerPills: ViewStyle = { flexDirection: "row", alignItems: "center" }
+const $pill: ViewStyle = { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }
+
+const $filterCard: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  backgroundColor: colors.palette.neutral100,
+  borderRadius: 16,
+  padding: spacing.md,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: colors.palette.neutral300,
+  marginBottom: spacing.md,
+})
+
+const $filterHeaderRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+}
+
+const $filterHeaderPressable: ViewStyle = {
+  flex: 1,
+  paddingVertical: 10,
+  paddingRight: 10,
+}
+
+const $filterHeaderLeft: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+}
+
+const $clearBtn: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 6,
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  borderWidth: 1,
+  backgroundColor: "rgba(23,55,186,0.06)",
+}
+
+const $chipRow: ViewStyle = {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  marginTop: 10,
+}
+
+// Chip container with separate label and close areas for reliable touch handling.
+const $chipContainer: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  borderWidth: 1,
+  borderRadius: 999,
+  backgroundColor: "rgba(0,0,0,0.03)",
+  marginRight: 8,
+  marginBottom: 8,
+  overflow: "hidden",
+}
+
+const $chipLabelArea: ViewStyle = {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+}
+
+const $chipCloseArea: ViewStyle = {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderLeftWidth: StyleSheet.hairlineWidth,
+  borderLeftColor: "rgba(0,0,0,0.12)",
+  alignItems: "center",
+  justifyContent: "center",
+}
+
+const $segmentedControl = (bg: string): ViewStyle => ({
+  flexDirection: "row",
+  backgroundColor: bg,
+  borderRadius: 10,
+  padding: 2,
+  marginTop: 8,
+})
+
+const $segment: ViewStyle = { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 8 }
+const $segmentActive: ViewStyle = { backgroundColor: "white", elevation: 2 }
+const $segmentText = (color: string): TextStyle => ({ fontSize: 12, color })
+const $segmentTextActive = (color: string): TextStyle => ({ color, fontWeight: "bold" })
+
+const $filterHint = (color: string): TextStyle => ({ opacity: 0.75, marginTop: 8, color })
+
+const $pricePill: ViewStyle = {
+  borderWidth: 1,
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 999,
+  backgroundColor: "rgba(23,55,186,0.06)",
+}

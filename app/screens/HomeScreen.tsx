@@ -262,7 +262,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
                 <View style={themed($priceDashboard)}>
                   <View style={themed($priceGridContainer)}>
                     {forecastData.map((f, index) => (
-                      <View key={f.fuel} style={themed($dataEntry)}>
+                      <View key={f.fuel} style={[themed($dataEntry), index < 2 && themed($dataEntryDivider)]}>
                         <Text style={themed($dataLabel)} tx={f.labelTx} />
                         <Text 
                           style={[themed($dataValue), { color: f.isIncrease ? colors.error : colors.palette.accent500 }]}
@@ -271,7 +271,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
                           adjustsFontSizeToFit={true}
                           minimumFontScale={0.7}
                         />
-                        {index < 2 && <View style={themed($verticalDivider)} />}
+                        
                       </View>
                     ))}
                   </View>
@@ -323,7 +323,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = function HomeScreen(
 }
 // #region STYLES
 const $forecastContentWrapper: ThemedStyle<ViewStyle> = () => ({
-  minHeight: 135,
+  minHeight: 150,
   justifyContent: "center",
 })
 const $skeletonContainer: ViewStyle = {
@@ -373,10 +373,29 @@ const $priceDashboard: ThemedStyle<ViewStyle> = ({ colors }) => ({
   marginVertical: 4,
 })
 const $priceGridContainer: ThemedStyle<ViewStyle> = () => ({ flexDirection: "row" })
-const $dataEntry: ThemedStyle<ViewStyle> = () => ({ width: "33.33%", alignItems: "center" })
+const $dataEntry: ThemedStyle<ViewStyle> = () => ({
+  width: "33.33%",
+  alignItems: "center",
+  paddingHorizontal: 6,
+})
+const $dataEntryDivider: ThemedStyle<ViewStyle> = () => ({
+  borderRightWidth: 1,
+  borderRightColor: "#D1D1D6",
+})
 const $verticalDivider: ThemedStyle<ViewStyle> = () => ({ position: 'absolute', right: 0, height: '80%', width: 1, backgroundColor: "#D1D1D6" })
 const $dataLabel: ThemedStyle<TextStyle> = () => ({ color: "#8E8E93", fontSize: 10, fontWeight: "600" })
-const $dataValue: ThemedStyle<TextStyle> = () => ({ fontSize: 18, fontWeight: "600", marginTop: 2, paddingHorizontal: 3 })
+const $dataValue: ThemedStyle<TextStyle> = () => ({
+  fontSize: 18,
+  fontWeight: "600",
+  marginTop: 2,
+  paddingHorizontal: 2,
+  textAlign: "center",
+  width: "100%",
+  flexShrink: 1,
+})
+const $dataValueRange: ThemedStyle<TextStyle> = () => ({
+  lineHeight: 18,
+})
 
 const $disclaimerBox: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flexDirection: "row",

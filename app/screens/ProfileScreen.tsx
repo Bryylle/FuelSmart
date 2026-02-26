@@ -155,12 +155,6 @@ export const ProfileScreen: FC = function ProfileScreen() {
 
   const filteredOptions = useMemo(() => fuelOptions.filter(opt => opt.toLowerCase().includes(searchQuery.toLowerCase())), [fuelOptions, searchQuery])
 
-  // const getInitials = (name: string) => {
-  //   if (!name) return ""
-  //   const parts = name.split(" ")
-  //   return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase()
-  // }
-
   if (loading && !refreshing) {
     return <Screen style={{ justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color={colors.palette.primary500} /></Screen>
   }
@@ -195,7 +189,7 @@ export const ProfileScreen: FC = function ProfileScreen() {
             <View style={themed($statsCard)}>
               <View style={$statBox}><Text weight="bold" style={$statValue}>{userData?.no_contributions || 0}</Text><Text size="xxs" style={$statLabel}>CONTRIBUTIONS</Text></View>
               <View style={$statDivider} />
-              <View style={$statBox}><Text weight="bold" style={$statValue}>{userData?.no_likes || 0}</Text><Text size="xxs" style={$statLabel}>LIKES</Text></View>
+              <View style={$statBox}><Text weight="bold" style={$statValue}>{userData?.no_incorrect_reports || 0}</Text><Text size="xxs" style={$statLabel}>INCORRECT REPORTS</Text></View>
             </View>
           </View>
 
@@ -224,6 +218,12 @@ export const ProfileScreen: FC = function ProfileScreen() {
                 <ListItem 
                   text="Update Oil Price Forecast" 
                   onPress={() => handleAdminPress("UpdateOilPriceForecast")} 
+                  rightIcon="caret_right" 
+                  style={themed($listItemStyle)} 
+                />
+                 <ListItem 
+                  text="Update/Add Brand Config" 
+                  onPress={() => handleAdminPress("UpdateAddBrand")} 
                   rightIcon="caret_right" 
                   style={themed($listItemStyle)} 
                 />
