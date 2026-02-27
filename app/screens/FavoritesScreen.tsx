@@ -32,6 +32,7 @@ import type { ThemedStyle } from "@/theme/types"
 import { delay } from "@/utils/delay"
 import { supabase } from "@/services/supabase"
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings"
+import { colors } from "@/theme/colors"
 
 /**
  * Matches MapScreen behavior.
@@ -77,11 +78,6 @@ export type NormalizedStation = any & {
   fetchError?: boolean
 }
 
-type ActiveChip = {
-  key: "fuelType" | "fuel" | "sort"
-  label: string
-}
-
 export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => {
   const {
     themed,
@@ -115,11 +111,6 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
 
   // UX: users can collapse filters; header row is fully tappable
   const [filtersExpanded, setFiltersExpanded] = useState(true)
-
-  // UX: auto-collapse filters after user makes a selection
-  const collapseFiltersSoon = useCallback(() => {
-    requestAnimationFrame(() => setFiltersExpanded(false))
-  }, [])
 
   const fetchFavorites = useCallback(async () => {
     try {
@@ -328,61 +319,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
     setActiveFuelType(null)
     setActiveFuelSubType(null)
     setSortOrder("asc")
-    collapseFiltersSoon()
   }
-
-  /**
-   * Active filter chips:
-   * - Show only non-default values (keeps UI clean).
-   * - Sort chip shows only if user picked 'desc'.
-   */
-  const activeChips: ActiveChip[] = useMemo(() => {
-    const chips: ActiveChip[] = []
-
-    if (activeFuelType) {
-      chips.push({
-        key: "fuelType",
-        label: activeFuelType === "gas" ? "Gasoline" : "Diesel",
-      })
-    }
-
-    if (activeFuelSubType) {
-      chips.push({
-        key: "fuel",
-        label: FUEL_SUBTYPE_LABELS[activeFuelSubType as Exclude<FuelSubType, null>],
-      })
-    }
-
-    if (activeFuelSubType && sortOrder === "desc") {
-      chips.push({
-        key: "sort",
-        label: "Highest → Lowest",
-      })
-    }
-
-    return chips
-  }, [activeFuelType, activeFuelSubType, sortOrder])
-
-  const removeChip = useCallback(
-    (key: ActiveChip["key"]) => {
-      switch (key) {
-        case "fuelType":
-          setActiveFuelType(null)
-          setActiveFuelSubType(null)
-          setSortOrder("asc")
-          break
-        case "fuel":
-          // Keep fuel type filter, but stop sorting by specific fuel
-          setActiveFuelSubType(null)
-          setSortOrder("asc")
-          break
-        case "sort":
-          setSortOrder("asc")
-          break
-      }
-    },
-    [],
-  )
 
   const normalizeForModal = useCallback((station: any): NormalizedStation => {
     return {
@@ -408,28 +345,6 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
     },
     [normalizeForModal],
   )
-
-  // Filter selection handlers (auto-collapse)
-  const onSelectFuelType = (type: FuelType) => {
-    setActiveFuelType(type)
-    if (!type) {
-      setActiveFuelSubType(null)
-      setSortOrder("asc")
-    } else {
-      setActiveFuelSubType(type === "gas" ? "regular_gas" : "regular_diesel")
-    }
-    collapseFiltersSoon()
-  }
-
-  const onSelectFuelSubType = (sub: Exclude<FuelSubType, null>) => {
-    setActiveFuelSubType(sub)
-    collapseFiltersSoon()
-  }
-
-  const onSelectSort = (order: SortOrder) => {
-    setSortOrder(order)
-    collapseFiltersSoon()
-  }
 
   const ListHeader = (
     <View>
@@ -457,74 +372,37 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
               style={$filterHeaderPressable}
               accessibilityRole="button"
               accessibilityLabel={filtersExpanded ? "Collapse filters" : "Expand filters"}
-              hitSlop={12}
+              hitSlop={10}
             >
               <View style={$filterHeaderLeft}>
                 <Text weight="bold" size="sm" style={{ color: colors.text }}>
                   Filters
                 </Text>
-                <Icon
-                  icon={filtersExpanded ? "caret_down" : "caret_right"}
-                  size={18}
-                  color={colors.palette.neutral500}
-                />
+                <View style={{ gap: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                  {hasActiveFilters && (
+                    <TouchableOpacity
+                      onPress={clearFilters}
+                      style={[$clearBtn, { borderColor: colors.palette.primary500 }]}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear all filters"
+                      hitSlop={10}
+                    >
+                      <Icon icon="close" size={14} color={colors.palette.primary500} />
+                      <Text size="xxs" weight="bold" style={{ color: colors.palette.primary500 }}>
+                        Clear
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <Icon
+                    icon={filtersExpanded ? "caret_down" : "caret_right"}
+                    size={18}
+                    color={colors.palette.neutral500}
+                  />
+                </View>
               </View>
             </Pressable>
-
-            {hasActiveFilters && (
-              <TouchableOpacity
-                onPress={clearFilters}
-                style={[$clearBtn, { borderColor: colors.palette.primary500 }]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Clear all filters"
-                hitSlop={12}
-              >
-                <Icon icon="close" size={14} color={colors.palette.primary500} />
-                <Text size="xxs" weight="bold" style={{ color: colors.palette.primary500 }}>
-                  Clear
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
-
-          {/* Active chips row (always visible if any filters applied) */}
-          {activeChips.length > 0 && (
-            <View style={$chipRow}>
-              {activeChips.map((chip) => (
-                <View
-                  key={chip.key}
-                  style={[$chipContainer, { borderColor: colors.palette.neutral300 }]}
-                >
-                  {/* Label area expands filters */}
-                  <Pressable
-                    onPress={() => setFiltersExpanded(true)}
-                    style={({ pressed }) => [$chipLabelArea, pressed && { opacity: 0.85 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Active filter: ${chip.label}. Tap to edit.`}
-                    hitSlop={8}
-                  >
-                    <Text size="xxs" weight="bold" style={{ color: colors.palette.neutral700 }}>
-                      {chip.label}
-                    </Text>
-                  </Pressable>
-
-                  {/* Close area removes this filter only */}
-                  <Pressable
-                    onPress={() => removeChip(chip.key)}
-                    style={({ pressed }) => [$chipCloseArea, pressed && { opacity: 0.75 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${chip.label}`}
-                    hitSlop={8}
-                  >
-                    <Text size="sm" style={{ color: colors.palette.neutral700, lineHeight: 16 }}>
-                      ×
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )}
 
           {filtersExpanded && (
             <Animated.View entering={FadeInUp} exiting={FadeOutUp}>
@@ -538,7 +416,15 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
                     <TouchableOpacity
                       key={type ?? "none"}
                       style={[$segment, activeFuelType === type && $segmentActive]}
-                      onPress={() => onSelectFuelType(type)}
+                      onPress={() => {
+                        setActiveFuelType(type)
+                        if (!type) {
+                          setActiveFuelSubType(null)
+                          setSortOrder("asc")
+                        } else {
+                          setActiveFuelSubType(type === "gas" ? "regular_gas" : "regular_diesel")
+                        }
+                      }}
                       activeOpacity={0.9}
                       accessibilityRole="button"
                       accessibilityLabel={type === "gas" ? "Fuel type Gasoline" : type === "diesel" ? "Fuel type Diesel" : "Fuel type None"}
@@ -558,15 +444,12 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
 
                 {activeFuelType && (
                   <>
-                    <Text weight="bold" size="xs" style={{ color: colors.text, marginTop: spacing.sm }}>
-                      Fuel
-                    </Text>
                     <View style={$segmentedControl(colors.palette.neutral200)}>
                       {availableSubTypes.map((sub) => (
                         <TouchableOpacity
                           key={sub}
                           style={[$segment, activeFuelSubType === sub && $segmentActive, { paddingHorizontal: 12 }]}
-                          onPress={() => onSelectFuelSubType(sub)}
+                          onPress={() => setActiveFuelSubType(sub)}
                           activeOpacity={0.9}
                           accessibilityRole="button"
                           accessibilityLabel={`Fuel subtype ${FUEL_SUBTYPE_LABELS[sub]}`}
@@ -591,7 +474,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
                     <View style={$segmentedControl(colors.palette.neutral200)}>
                       <TouchableOpacity
                         style={[$segment, sortOrder === "asc" && $segmentActive]}
-                        onPress={() => onSelectSort("asc")}
+                        onPress={() => setSortOrder("asc")}
                         activeOpacity={0.9}
                         accessibilityRole="button"
                         accessibilityLabel="Sort lowest to highest"
@@ -609,7 +492,7 @@ export const FavoritesScreen: FC<DemoTabScreenProps<"Favorites">> = (_props) => 
 
                       <TouchableOpacity
                         style={[$segment, sortOrder === "desc" && $segmentActive]}
-                        onPress={() => onSelectSort("desc")}
+                        onPress={() => setSortOrder("desc")}
                         activeOpacity={0.9}
                         accessibilityRole="button"
                         accessibilityLabel="Sort highest to lowest"
@@ -749,20 +632,18 @@ const FavoriteStationCard = ({
       HeadingComponent={
         <View style={$cardHeader}>
           <View style={$titleRow}>
-            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
               <Text weight="bold" size="md" style={$stationName} numberOfLines={1}>
                 {station.brand}
               </Text>
-
               {badgePrice !== null && (
-                <View style={[$pricePill, { borderColor: colors.palette.primary500 }]}> 
-                  <Text size="xxs" weight="bold" style={{ color: colors.palette.primary500 }}>
+                <View style={[$pricePill, { borderColor: '#ffffff' }]}> 
+                  <Text size="xxs" weight="bold" style={{ color: '#ffffff' }}>
                     ₱{badgePrice.toFixed(2)}
                   </Text>
                 </View>
               )}
             </View>
-
             <Icon icon="caret_right" size={18} color={colors.palette.neutral500} />
           </View>
 
@@ -781,7 +662,7 @@ const FavoriteStationCard = ({
                 accessibilityRole="button"
                 accessibilityLabel="View contributor"
               >
-                <Text size="xxs" style={[$metadataText, { color: colors.palette.primary500, fontWeight: "700" }]}>
+                <Text size="xxs" style={[$metadataText, { color: colors.text, fontWeight: "700" }]}>
                   {" "}by {getDisplayName(station.users.full_name, station.users.b_show_name)}
                 </Text>
               </TouchableOpacity>
@@ -791,10 +672,6 @@ const FavoriteStationCard = ({
               </Text>
             )}
           </View>
-
-          <Text size="xxs" style={[$tapHint, { color: colors.palette.neutral500 }]}>
-            Tap to view details, directions, or update prices
-          </Text>
         </View>
       }
     />
@@ -858,10 +735,11 @@ const $filterHeaderRow: ViewStyle = {
   justifyContent: "space-between",
 }
 
+// Full-width pressable area (left+middle) so user can tap anywhere to expand/collapse.
 const $filterHeaderPressable: ViewStyle = {
   flex: 1,
-  paddingVertical: 10,
-  paddingRight: 10,
+  paddingVertical: 8,
+  paddingRight: 8,
 }
 
 const $filterHeaderLeft: ViewStyle = {
@@ -879,38 +757,6 @@ const $clearBtn: ViewStyle = {
   borderRadius: 999,
   borderWidth: 1,
   backgroundColor: "rgba(23,55,186,0.06)",
-}
-
-const $chipRow: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  marginTop: 10,
-}
-
-// Chip container with separate label and close areas for reliable touch handling.
-const $chipContainer: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  borderWidth: 1,
-  borderRadius: 999,
-  backgroundColor: "rgba(0,0,0,0.03)",
-  marginRight: 8,
-  marginBottom: 8,
-  overflow: "hidden",
-}
-
-const $chipLabelArea: ViewStyle = {
-  paddingHorizontal: 10,
-  paddingVertical: 6,
-}
-
-const $chipCloseArea: ViewStyle = {
-  paddingHorizontal: 10,
-  paddingVertical: 6,
-  borderLeftWidth: StyleSheet.hairlineWidth,
-  borderLeftColor: "rgba(0,0,0,0.12)",
-  alignItems: "center",
-  justifyContent: "center",
 }
 
 const $segmentedControl = (bg: string): ViewStyle => ({
@@ -933,5 +779,6 @@ const $pricePill: ViewStyle = {
   paddingHorizontal: 8,
   paddingVertical: 4,
   borderRadius: 999,
-  backgroundColor: "rgba(23,55,186,0.06)",
+  backgroundColor: colors.palette.secondary600,
+  zIndex: 5,
 }

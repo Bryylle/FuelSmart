@@ -21,7 +21,6 @@ import { TermsAndConditionsScreen } from "@/screens/TermsAndConditionsScreen"
 import { PrivacyPolicyScreen } from "@/screens/PrivacyPolicyScreen"
 import { AccountSettingsScreen } from "@/screens/AccountSettings"
 import { UpdateOilPriceForecastScreen } from "@/screens/UpdateOilPriceForecastScreen"
-// import { UpdateAccountDetailsScreen } from "@/screens/UpdateAccountDetailsScreen"
 import { UpdateAddBrandScreen } from "@/screens/UpdateAddBrandScreen"
 
 /**

@@ -801,7 +801,70 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     mapRef.current.animateToRegion({...region,latitudeDelta: 0.03,longitudeDelta: 0.03,}, 600)
   }
 
-  const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
+  
+
+// --- Accuracy helpers (crosshair + reset view) ---
+const getCrosshairCoordinate = useCallback(async () => {
+  // If layout/ref not ready, fall back to the current region center.
+  if (!mapRef.current || mapLayout.width === 0 || mapLayout.height === 0) {
+    return { latitude: region.latitude, longitude: region.longitude }
+  }
+
+  const x = mapLayout.width / 2
+  const y = mapLayout.height / 2
+
+  try {
+    // @ts-ignore - available in react-native-maps (typings may vary by version)
+    const coord = await mapRef.current.coordinateForPoint({ x, y })
+    return coord
+  } catch {
+    return { latitude: region.latitude, longitude: region.longitude }
+  }
+}, [mapLayout.width, mapLayout.height, region.latitude, region.longitude])
+
+const ensureUserLocation = useCallback(async () => {
+  if (userLocation) return userLocation
+
+  const { status } = await Location.requestForegroundPermissionsAsync()
+  if (status !== 'granted') return null
+
+  const location = await Location.getCurrentPositionAsync({})
+  const coords = {
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+  }
+  setUserLocation(coords)
+  return coords
+}, [userLocation])
+
+const resetView = useCallback(async () => {
+  if (!mapRef.current) return
+
+  // Reset orientation (compass/pitch)
+  mapRef.current.animateCamera({ heading: 0, pitch: 0 }, { duration: 250 })
+
+  // Prefer recenter to user location (requires permission)
+  const coords = await ensureUserLocation()
+  if (coords) {
+    mapRef.current.animateCamera(
+      {
+        center: coords,
+        heading: 0,
+        pitch: 0,
+        zoom: 16,
+      },
+      { duration: 600 },
+    )
+    return
+  }
+
+  // Fallback: keep current center, but reset to a sensible zoom level
+  mapRef.current.animateToRegion(
+    { ...region, latitudeDelta: 0.03, longitudeDelta: 0.03 },
+    600,
+  )
+}, [ensureUserLocation, region])
+const getDisplayName = (fullName: string | undefined, bShowName: boolean) => {
     if (!fullName) return "Anonymous"
     if (bShowName) return fullName
     return `${fullName.charAt(0)}*****`
@@ -864,10 +927,11 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
           style={styles.flex}
           onRegionChangeComplete={onRegionChangeComplete}
           showsUserLocation={!isAddMarkerMode}
-          mapPadding={{top: 110, left: 0, right:0, bottom: 0}}
-          toolbarEnabled={false}
+toolbarEnabled={false}
           initialRegion={region}
           customMapStyle={MAP_STYLE}
+        showsCompass={false}
+        showsMyLocationButton={false}
         >
           {region.latitudeDelta < ZOOM_THRESHOLD && ( 
             <>
@@ -1090,7 +1154,7 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
           {isNotAtMarkerLevel && !isAddMarkerMode && (
             <TouchableOpacity 
               style={[styles.utilityBtn, { bottom : 50 }]} 
-              onPress={zoomToMarkerVisibleLevel}
+              onPress={resetView}
               activeOpacity={0.9}
             >
               <Icon icon="reset_focus" color={colors.palette.primary600} size={24} />
@@ -1108,14 +1172,21 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
             <TouchableOpacity style={[styles.crosshairBtn, {backgroundColor: colors.childBackground}]} onPress={() => toggleAddMarkerMode()}>
               <Text text="Cancel" style={styles.cancelText} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.crosshairBtn} onPress={() => setReportModalVisible(true)}>
+            <TouchableOpacity
+  style={styles.crosshairBtn}
+  onPress={async () => {
+    const coord = await getCrosshairCoordinate()
+    setTempMarker({ ...tempMarker, ...coord })
+    setReportModalVisible(true)
+  }}
+>
               <Text text="Set Location" style={styles.inline_027} />
             </TouchableOpacity>
           </View>
         </Animated.View>
       )}
       {isAddMarkerMode && (
-        <View style={[styles.crosshairContainer, { width: mapLayout.width, height: mapLayout.height, marginTop: 130, }]} pointerEvents="none">
+        <View style={[styles.crosshairContainer, { width: mapLayout.width, height: mapLayout.height,  }]} pointerEvents="none">
           <Icon icon="close" color={"red"} size={40} />
           <View style={styles.crosshairDot} />
         </View>
@@ -1587,4 +1658,3 @@ const StationMarkers = React.memo(({
     prev.activeFuelSubType === next.activeFuelSubType
   )
 })
-

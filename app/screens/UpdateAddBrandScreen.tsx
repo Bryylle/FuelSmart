@@ -12,7 +12,6 @@ import {
   ViewStyle,
   TextStyle,
 } from "react-native"
-
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { Button } from "@/components/Button"
@@ -20,29 +19,26 @@ import { Icon } from "@/components/Icon"
 import { ScreenHeader } from "@/components/ScreenHeader"
 import { Switch } from "@/components/Toggle/Switch"
 import { BrandListModal } from "@/components/BrandListModal"
-
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { spacing } from "@/theme/spacing"
 import type { ThemedStyle } from "@/theme/types"
-
 import { delay } from "@/utils/delay"
 import { supabase } from "@/services/supabase"
+
+// ✅ Same concept as MapScreen: fuel switches are derived from the in-app mapping,
+// not from the DB config row.
+import { initFuelMappings, FUEL_BRAND_MAP } from "@/utils/fuelMappings"
 
 /**
  * UpdateAddBrandScreen.tsx
  *
  * Admin screen for adding/updating brand fuel config (marketing names per fuel).
- * UI/UX style intentionally aligned with UpdateOilPriceForecastScreen:
- * - ScreenHeader
- * - Card-like input wrappers
- * - Switch + inline validation
- * - Save button with ActivityIndicator
  *
- * IMPORTANT:
- * You must set BRAND_CONFIG_TABLE + column names to match your DB schema.
- * This screen assumes a table where each row is keyed by `brand` and contains
- * marketing labels for each fuel subtype. Missing fuel => NULL.
+ * ✅ CHANGE REQUEST:
+ * When selecting a brand, DO NOT fetch brand config from DB.
+ * Instead, immediately toggle switches using FUEL_BRAND_MAP (same behavior as MapScreen).
+ * Admin can still Save to DB via upsert.
  */
 
 // ---- Configure these to match your Supabase schema ----
@@ -98,6 +94,13 @@ const defaultForm: FormState = {
   },
 }
 
+// --- Helper: case-insensitive lookup against FUEL_BRAND_MAP (same pattern as MapScreen) ---
+const getMappedBrandConfig = (brand: string) => {
+  const brandLower = brand.trim().toLowerCase()
+  const key = Object.keys(FUEL_BRAND_MAP).find((k) => k.toLowerCase() === brandLower)
+  return key ? (FUEL_BRAND_MAP as any)[key] : null
+}
+
 // Reusable field row with Switch + conditional marketing name input
 const FuelToggleField = React.memo(
   ({
@@ -117,7 +120,6 @@ const FuelToggleField = React.memo(
           <Text preset="formLabel" text={label} size="md" style={[disabled && { opacity: 0.5 }]} />
           <Switch value={enabled} onValueChange={onToggle} disabled={disabled} />
         </View>
-
         {enabled && (
           <TextInput
             style={[themedStyles.$input, disabled && { opacity: 0.5 }]}
@@ -150,9 +152,11 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
 
   const [form, setForm] = useState<FormState>(defaultForm)
 
-  // For UX: if brand exists, we load config & allow editing
+  // UX helper
   const [isExistingBrand, setIsExistingBrand] = useState(false)
-  const [loadedConfigBrand, setLoadedConfigBrand] = useState<string | null>(null)
+
+  // Ensure FUEL_BRAND_MAP is available (MapScreen calls initFuelMappings on mount)
+  const [fuelMappingsReady, setFuelMappingsReady] = useState(false)
 
   const themedStyles = useMemo(
     () => ({
@@ -165,84 +169,41 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
     [themed],
   )
 
+  const ensureFuelMappings = useCallback(async () => {
+    if (fuelMappingsReady) return
+    try {
+      await initFuelMappings()
+    } catch (e) {
+      // Non-fatal: admin can still manually toggle.
+      console.warn("initFuelMappings failed:", e)
+    } finally {
+      setFuelMappingsReady(true)
+    }
+  }, [fuelMappingsReady])
+
   const loadBrands = useCallback(async () => {
-    // Uses the same pattern as MapScreen: fetch unique brands from fuel_stations
+    // Fetch unique brands from fuel_stations (same idea as MapScreen)
     const { data, error } = await supabase.from("fuel_stations").select("brand")
     if (error) throw error
     const unique = Array.from(new Set((data ?? []).map((s: any) => s.brand).filter(Boolean))).sort()
     setAvailableBrands(unique)
   }, [])
 
-  const loadBrandConfig = useCallback(
-    async (brand: string) => {
-      const normalized = normalizeBrandLabel(brand)
-      if (!normalized) return
-
-      // Determine if it's an existing station brand
-      const exists = availableBrands.some((b) => b.toLowerCase() === normalized.toLowerCase())
-      setIsExistingBrand(exists)
-
-      // Load current config from the config table (if exists)
-      // Note: We allow editing even for existing brands.
+  const initialize = useCallback(
+    async (isRefresh = false) => {
       try {
-        const { data, error } = await supabase
-          .from(BRAND_CONFIG_TABLE)
-          .select("*")
-          .eq(BRAND_UNIQUE_COL, normalized)
-          .maybeSingle()
-
-        if (error) throw error
-
-        if (!data) {
-          // No config found -> treat as new config
-          setLoadedConfigBrand(null)
-          setForm((p) => ({ ...defaultForm, brand: normalized }))
-          return
-        }
-
-        const nextHas: Record<FuelKey, boolean> = {
-          regular_gas: !!data[COLS.regular_gas],
-          premium_gas: !!data[COLS.premium_gas],
-          sports_gas: !!data[COLS.sports_gas],
-          regular_diesel: !!data[COLS.regular_diesel],
-          premium_diesel: !!data[COLS.premium_diesel],
-        }
-
-        const nextNames: Record<FuelKey, string> = {
-          regular_gas: String(data[COLS.regular_gas] ?? ""),
-          premium_gas: String(data[COLS.premium_gas] ?? ""),
-          sports_gas: String(data[COLS.sports_gas] ?? ""),
-          regular_diesel: String(data[COLS.regular_diesel] ?? ""),
-          premium_diesel: String(data[COLS.premium_diesel] ?? ""),
-        }
-
-        setLoadedConfigBrand(normalized)
-        setForm({ brand: normalized, has: nextHas, names: nextNames })
+        if (!isRefresh) setLoading(true)
+        await Promise.allSettled([ensureFuelMappings(), loadBrands()])
       } catch (e: any) {
-        console.error("Config load failed:", e)
-        Alert.alert("Error", "Could not load brand configuration.")
+        console.error("Init failed:", e)
+        Alert.alert("Error", "Could not load brands.")
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
       }
     },
-    [availableBrands],
+    [ensureFuelMappings, loadBrands],
   )
-
-  const initialize = useCallback(async (isRefresh = false) => {
-    try {
-      if (!isRefresh) setLoading(true)
-      await loadBrands()
-
-      // If a brand is already selected, refresh its config
-      if (form.brand.trim()) {
-        await loadBrandConfig(form.brand)
-      }
-    } catch (e: any) {
-      console.error("Init failed:", e)
-      Alert.alert("Error", "Could not load brands.")
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [loadBrands, loadBrandConfig, form.brand])
 
   useEffect(() => {
     initialize(false)
@@ -259,24 +220,55 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
     const query = brandSearchQuery.trim().toLowerCase()
     const exactMatchExists = availableBrands.some((b) => b.toLowerCase() === query)
     const filtered = availableBrands.filter((opt) => opt.toLowerCase().includes(query))
-
     if (query !== "" && !exactMatchExists) {
       return [`Add "${brandSearchQuery.trim()}"`, ...filtered]
     }
     return filtered
   }, [availableBrands, brandSearchQuery])
 
-  const setBrand = useCallback(
-    async (brand: string) => {
-      const normalized = normalizeBrandLabel(brand)
-      setForm((p) => ({ ...p, brand: normalized }))
+  // ✅ Apply mapping immediately when selecting a brand (NO DB fetch).
+  const applyMappingForBrand = useCallback(
+    async (brandRaw: string) => {
+      const brand = normalizeBrandLabel(brandRaw)
+      if (!brand) return
+
+      await ensureFuelMappings()
+
+      const exists = availableBrands.some((b) => b.toLowerCase() === brand.toLowerCase())
+      setIsExistingBrand(exists)
+
+      const mapped = getMappedBrandConfig(brand)
+
+      if (mapped) {
+        const nextHas: Record<FuelKey, boolean> = {
+          regular_gas: !!mapped[COLS.regular_gas],
+          premium_gas: !!mapped[COLS.premium_gas],
+          sports_gas: !!mapped[COLS.sports_gas],
+          regular_diesel: !!mapped[COLS.regular_diesel],
+          premium_diesel: !!mapped[COLS.premium_diesel],
+        }
+
+        // If mapping values are strings, prefill names; if booleans, keep names empty.
+        const nextNames: Record<FuelKey, string> = {
+          regular_gas: typeof mapped[COLS.regular_gas] === "string" ? String(mapped[COLS.regular_gas] ?? "") : "",
+          premium_gas: typeof mapped[COLS.premium_gas] === "string" ? String(mapped[COLS.premium_gas] ?? "") : "",
+          sports_gas: typeof mapped[COLS.sports_gas] === "string" ? String(mapped[COLS.sports_gas] ?? "") : "",
+          regular_diesel:
+            typeof mapped[COLS.regular_diesel] === "string" ? String(mapped[COLS.regular_diesel] ?? "") : "",
+          premium_diesel:
+            typeof mapped[COLS.premium_diesel] === "string" ? String(mapped[COLS.premium_diesel] ?? "") : "",
+        }
+
+        setForm({ brand, has: nextHas, names: nextNames })
+      } else {
+        // No mapping found => treat as new brand
+        setForm({ ...defaultForm, brand })
+      }
+
       setBrandSearchQuery("")
       setIsBrandPickerVisible(false)
-
-      // Load config for that brand (existing or new)
-      await loadBrandConfig(normalized)
     },
-    [loadBrandConfig],
+    [availableBrands, ensureFuelMappings],
   )
 
   const toggleFuel = useCallback((key: FuelKey, val: boolean) => {
@@ -295,14 +287,13 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
   const validate = useCallback(() => {
     const brand = form.brand.trim()
     if (!brand) return "Brand is required."
-
     const anyFuel = Object.values(form.has).some(Boolean)
     if (!anyFuel) return "Please enable at least one fuel type for this brand."
 
+    // For this admin screen we require names for enabled fuels (same as original behavior).
     const missingNames = (Object.keys(form.has) as FuelKey[])
       .filter((k) => form.has[k])
       .some((k) => !form.names[k].trim())
-
     if (missingNames) return "Please provide a marketing name for each enabled fuel type."
 
     return null
@@ -322,51 +313,31 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
       [COLS.sports_gas]: form.has.sports_gas ? form.names.sports_gas.trim() : null,
       [COLS.regular_diesel]: form.has.regular_diesel ? form.names.regular_diesel.trim() : null,
       [COLS.premium_diesel]: form.has.premium_diesel ? form.names.premium_diesel.trim() : null,
-      // Optionally store audit fields if your table has them:
-      // updated_at: new Date().toISOString(),
     }
 
     try {
       setSaving(true)
-
-      // Upsert by brand
       const { error } = await supabase
         .from(BRAND_CONFIG_TABLE)
         .upsert(payload, { onConflict: BRAND_UNIQUE_COL })
 
       if (error) throw error
 
-      Alert.alert(
-        "Success",
-        loadedConfigBrand ? "Brand configuration updated!" : "Brand configuration added!",
-      )
+      Alert.alert("Success", "Brand configuration saved!")
 
-      setLoadedConfigBrand(form.brand.trim())
-      // Ensure lists are updated too
+      // Refresh brand list (optional)
       await Promise.allSettled([initialize(true), delay(350)])
-      setFiltersAfterSaveUX()
     } catch (e: any) {
       console.error("Save failed:", e)
       Alert.alert("Failed", e?.message ?? "Could not save brand configuration.")
     } finally {
       setSaving(false)
     }
-  }, [form, validate, loadedConfigBrand, initialize])
-
-  // Small UX helper: if admin added a brand config for a brand not in fuel_stations yet,
-  // we still keep the form as-is.
-  const setFiltersAfterSaveUX = () => {
-    // Placeholder for future UX decisions.
-    // For example: navigation.goBack() after save.
-  }
+  }, [form, validate, initialize])
 
   return (
     <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
-      <ScreenHeader
-        title="Update / Add Brand"
-        leftIcon="arrow_left"
-        onLeftPress={() => navigation.goBack()}
-      />
+      <ScreenHeader title="Update / Add Brand" leftIcon="arrow_left" onLeftPress={() => navigation.goBack()} />
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         {loading && !refreshing ? (
@@ -406,7 +377,7 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
 
                 <Text size="xxs" style={themedStyles.$muted}>
                   {isExistingBrand
-                    ? "Existing brand detected. You can update its fuel labels below."
+                    ? "Existing brand detected. Switches are auto-toggled from the app mapping." 
                     : "New brand. Please enable available fuels and set marketing labels."}
                 </Text>
               </View>
@@ -424,7 +395,7 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
                 upperRightIcon={true}
                 searchQuery={brandSearchQuery}
                 onSearchChange={setBrandSearchQuery}
-                onSelect={(brand) => setBrand(brand as string)}
+                onSelect={(brand) => applyMappingForBrand(brand as string)}
               />
 
               {/* Fuel toggles */}
@@ -439,7 +410,6 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
                   value={form.names[f.key]}
                   onToggle={(v: boolean) => toggleFuel(f.key, v)}
                   onChangeText={(t: string) => setFuelName(f.key, t)}
-                  // Admin should be able to edit always; no disable.
                   disabled={false}
                   colors={colors}
                   themedStyles={themedStyles}
@@ -462,7 +432,12 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
                 disabled={saving}
                 RightAccessory={() => (saving ? <ActivityIndicator color="#fff" /> : null)}
               >
-                <Text text={saving ? "Saving..." : "Save Changes"} size="md" style={{ color: "#fff" }} preset="bold" />
+                <Text
+                  text={saving ? "Saving..." : "Save Changes"}
+                  size="md"
+                  style={{ color: "#fff" }}
+                  preset="bold"
+                />
               </Button>
             </View>
 

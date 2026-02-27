@@ -1,7 +1,6 @@
 import React from "react"
 import {
   ActivityIndicator,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,7 +14,11 @@ import {
   PixelRatio,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import Animated, { FadeIn } from "react-native-reanimated"
+import Animated, {
+  FadeIn,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from "react-native-reanimated"
 import { formatDistanceToNow } from "date-fns"
 
 import { Text } from "@/components/Text"
@@ -24,7 +27,6 @@ import { useAppTheme } from "@/theme/context"
 import { colors } from "@/theme/colors"
 import { spacing } from "@/theme/spacing"
 import { $gStyles } from "@/theme/styles"
-
 import { FUEL_BRAND_MAP } from "../utils/fuelMappings" // adjust relative path if needed
 
 const HAIRLINE = 1 / PixelRatio.get()
@@ -94,40 +96,41 @@ export function StationDetailModal<T extends StationBase>({
   const { themed } = useAppTheme()
   const insets = useSafeAreaInsets()
 
-  // ✅ keep only 20px gap above native navigation area
-  const bottomGap = insets.bottom + 20
+  const scrollRef = React.useRef<ScrollView>(null)
 
-  // ✅ Fix for the persistent bottom gap:
-  // Using behavior="height" on Android can leave the parent height reduced after the keyboard closes.
-  // Switching Android to "padding" avoids the phantom gap while still keeping inputs visible.
-  const kavBehavior = Platform.OS === "ios" ? "padding" : "padding"
+  // Keep only a small gap above native navigation area when keyboard is closed.
+  const bottomGap = insets.bottom + 12
+
+  // iOS: KeyboardAvoidingView is reliable.
+  // Android: we avoid KAV (phantom gaps on some devices) and instead lift the sheet using Reanimated keyboard height.
+  const kavEnabled = Platform.OS === "ios"
+  const kavBehavior = Platform.OS === "ios" ? "padding" : undefined
   const kavOffset = Platform.OS === "ios" ? insets.top : 0
 
-  // ✅ Track keyboard so we can tighten bottom padding when keyboard is open
-  const [keyboardVisible, setKeyboardVisible] = React.useState(false)
-  React.useEffect(() => {
-    const showSub = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      () => setKeyboardVisible(true),
-    )
-    const hideSub = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => setKeyboardVisible(false),
-    )
+  // Reanimated keyboard (more reliable than JS listeners for reset)
+  const keyboard = useAnimatedKeyboard()
 
-    return () => {
-      showSub.remove()
-      hideSub.remove()
+  // Android lift: translate the sheet up by keyboard height.
+  // This avoids any persistent margin/padding after keyboard closes.
+  const sheetLiftStyle = useAnimatedStyle(() => {
+    if (Platform.OS !== "android") return {}
+    const h = keyboard.height.value
+    return {
+      transform: [{ translateY: -h }],
     }
   }, [])
-
-  // When keyboard is visible, don't add large bottom padding (prevents huge blank area).
-  const contentBottomPadding = keyboardVisible ? 12 : bottomGap
 
   const closeModal = React.useCallback(() => {
     setSelectedStation(null)
     setIsReporting(false)
   }, [setIsReporting, setSelectedStation])
+
+  const onAnyPriceFocus = React.useCallback(() => {
+    // Ensure the focused input isn't hidden behind the keyboard
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [])
 
   return (
     <Modal
@@ -138,52 +141,44 @@ export function StationDetailModal<T extends StationBase>({
       onRequestClose={() => !isReporting && setSelectedStation(null)}
     >
       <KeyboardAvoidingView
-        behavior={kavBehavior}
+        enabled={kavEnabled}
+        behavior={kavBehavior as any}
         keyboardVerticalOffset={kavOffset}
         style={styles.flex}
       >
         <View style={styles.modalOverlay}>
+          {/*
+            Backdrop:
+            - Provides dimming scrim
+            - Prevents underlying TabBar from showing through (transparent modal)
+          */}
           <Pressable
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, styles.backdrop]}
             onPress={() => !isReporting && setSelectedStation(null)}
           />
 
           {selectedStation && (
-            <Animated.View entering={FadeIn} style={styles.detailCard}>
+            <Animated.View entering={FadeIn} style={[styles.detailCard, { paddingBottom: insets.bottom }, sheetLiftStyle]}>
               {/* Handle area (tap to close) + caret-down icon */}
-              <TouchableOpacity
-                onPress={closeModal}
-                activeOpacity={0.85}
-                style={styles.dismissHandle}
-              >
+              <TouchableOpacity onPress={closeModal} activeOpacity={0.85} style={styles.dismissHandle}>
                 <Icon icon="caret_down" size={22} color="white" />
               </TouchableOpacity>
 
               {/* Content */}
               <ScrollView
+                ref={scrollRef}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
                 nestedScrollEnabled
-                contentContainerStyle={[
-                  styles.scrollContent,
-                  { paddingBottom: contentBottomPadding },
-                ]}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomGap }]}
               >
                 {/* Header row: Left (2 rows of text) + Right (favorite button area) */}
                 <View style={styles.headerRow}>
                   <View style={styles.headerLeft}>
-                    {/* Row 1 */}
-                    <Text
-                      weight="bold"
-                      size="md"
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                      style={styles.brandText}
-                    >
+                    <Text weight="bold" size="md" numberOfLines={1} ellipsizeMode="tail" style={styles.brandText}>
                       {selectedStation.brand}
                     </Text>
 
-                    {/* Row 2 (one line only): city + time + by name */}
                     {(() => {
                       const timePart = selectedStation.updated_at
                         ? " • " +
@@ -204,24 +199,15 @@ export function StationDetailModal<T extends StationBase>({
                       const byId = selectedStation.last_updated_by?.id
 
                       const MetaLine = (
-                        <Text
-                          size="sm"
-                          style={[styles.opacity_half, styles.metaLine]}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
+                        <Text size="sm" style={[styles.opacity_half, styles.metaLine]} numberOfLines={1} ellipsizeMode="tail">
                           {selectedStation.city}
                           {timePart}
-                          <RNText style={styles.byInlineText}>{"  by " + byName}</RNText>
+                          <RNText style={styles.byInlineText}>{" by " + byName}</RNText>
                         </Text>
                       )
 
                       return byId ? (
-                        <TouchableOpacity
-                          onPress={() => onOpenContributor(byId)}
-                          activeOpacity={0.85}
-                          style={styles.metaTouchArea}
-                        >
+                        <TouchableOpacity onPress={() => onOpenContributor(byId)} activeOpacity={0.85} style={styles.metaTouchArea}>
                           {MetaLine}
                         </TouchableOpacity>
                       ) : (
@@ -230,25 +216,17 @@ export function StationDetailModal<T extends StationBase>({
                     })()}
                   </View>
 
-                  {/* Right: Favorite star (hidden for pending) */}
                   <View style={styles.headerRight}>
                     {!selectedStation.isPending && (
                       <TouchableOpacity
                         onPress={toggleFavorite}
-                        style={[
-                          styles.favoriteBtn,
-                          selectedStation.fetchError && styles.opacity_half,
-                        ]}
+                        style={[styles.favoriteBtn, selectedStation.fetchError && styles.opacity_half]}
                         disabled={!!selectedStation.fetchError}
                         hitSlop={10}
                       >
                         <Icon
                           icon="star"
-                          color={
-                            favorites.includes(selectedStation.id)
-                              ? colors.palette.primary500
-                              : "#D1D1D6"
-                          }
+                          color={favorites.includes(selectedStation.id) ? colors.palette.primary500 : "#D1D1D6"}
                           size={32}
                         />
                       </TouchableOpacity>
@@ -260,17 +238,9 @@ export function StationDetailModal<T extends StationBase>({
                 {selectedStation.isPending ? (
                   <View style={styles.mt_12}>
                     <View style={styles.inline_034}>
-                      <Text
-                        text="User Reported Location"
-                        size="xs"
-                        weight="bold"
-                        style={styles.inline_035}
-                      />
-                      <Text
-                        text="Is this station real? Help verify it for the community."
-                        size="xxs"
-                        style={styles.inline_035}
-                      />
+                      <Text text="User Reported Location" size="xs" weight="bold" style={styles.inline_035} />
+                      <Text text="Is this station real? Help verify it for the community." size="xxs" style={styles.inline_035} />
+
                       <View style={styles.inline_036}>
                         {[
                           "regular_gas_name",
@@ -281,27 +251,17 @@ export function StationDetailModal<T extends StationBase>({
                         ].map((key) =>
                           selectedStation[key] ? (
                             <View key={key} style={styles.fuelTag}>
-                              <Text
-                                text={selectedStation[key]}
-                                size="xxs"
-                                weight="bold"
-                                style={styles.inline_015}
-                              />
+                              <Text text={selectedStation[key]} size="xxs" weight="bold" style={styles.inline_015} />
                             </View>
                           ) : null,
                         )}
                       </View>
                     </View>
 
-                    {/* If user owns this report */}
                     {loggedInUserId && loggedInUserId === selectedStation.reporter_id ? (
                       <View style={styles.inline_037}>
                         <View style={styles.inline_038}>
-                          <Text
-                            text="Waiting for others to verify your report..."
-                            size="xs"
-                            style={styles.opacity_half}
-                          />
+                          <Text text="Waiting for others to verify your report..." size="xs" style={styles.opacity_half} />
                         </View>
                         <TouchableOpacity
                           style={[styles.pendingFormBtns, styles.inline_039]}
@@ -314,27 +274,19 @@ export function StationDetailModal<T extends StationBase>({
                       <View style={styles.inline_041}>
                         {hasVoted ? (
                           <View style={styles.inline_038}>
-                            <Text
-                              text="Your confirmation has been saved"
-                              size="xs"
-                              style={styles.opacity_half}
-                            />
+                            <Text text="Your confirmation has been saved" size="xs" style={styles.opacity_half} />
                           </View>
                         ) : (
                           <View style={styles.inline_042}>
                             <TouchableOpacity
                               style={[styles.pendingFormBtns, styles.inline_043]}
-                              onPress={() =>
-                                handleVerifyOrDenyPendingMarker(selectedStation.id, false)
-                              }
+                              onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, false)}
                             >
                               <Text style={styles.inline_044}>Deny</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={[styles.pendingFormBtns, styles.inline_045]}
-                              onPress={() =>
-                                handleVerifyOrDenyPendingMarker(selectedStation.id, true)
-                              }
+                              onPress={() => handleVerifyOrDenyPendingMarker(selectedStation.id, true)}
                             >
                               <Text style={styles.inline_044}>Confirm</Text>
                             </TouchableOpacity>
@@ -344,7 +296,6 @@ export function StationDetailModal<T extends StationBase>({
                     )}
                   </View>
                 ) : (
-                  /* Regular Station Price UI */
                   <View style={themed(styles.priceDashboard)}>
                     {selectedStation.isLoading ? (
                       <View style={styles.inline_046}>
@@ -356,53 +307,38 @@ export function StationDetailModal<T extends StationBase>({
                     ) : selectedStation.fetchError ? (
                       <View style={styles.inline_048}>
                         <Icon icon="information" color={colors.palette.angry500} size={40} />
-                        <Text
-                          style={styles.inline_049}
-                          text="Sorry, there is a problem in this location."
-                        />
+                        <Text style={styles.inline_049} text="Sorry, there is a problem in this location." />
                       </View>
                     ) : (
-                      // ✅ Reverted: no internal scroll in the price area.
-                      // The grid expands naturally so fuel types are visible together.
                       <View style={styles.scrollPriceGrid}>
                         <View style={styles.priceGridContainer}>
                           {(() => {
                             const fuel_types_config = FUEL_BRAND_MAP[selectedStation.brand] ?? {}
-
                             return Object.keys(fuel_types_config).map((key) => {
                               if (!fuel_types_config[key]) return null
-
                               return (
                                 <View key={key} style={styles.inline_050}>
-                                  <Text
-                                    style={styles.fuelTypeLabel}
-                                    numberOfLines={1}
-                                    adjustsFontSizeToFit
-                                    minimumFontScale={0.7}
-                                  >
+                                  <Text style={styles.fuelTypeLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                                     {fuel_types_config[key]}
                                   </Text>
-
                                   {isReporting ? (
                                     <TextInput
                                       style={styles.priceInput}
                                       keyboardType="decimal-pad"
                                       defaultValue=""
                                       placeholder="00.00"
+                                      onFocus={onAnyPriceFocus}
                                       onChangeText={(val) => {
                                         const cleaned = val
                                           .replace(/,/g, ".")
                                           .replace(/[^0-9.]/g, "")
                                           .replace(/(\..*)\./g, "$1")
-
                                         priceInputsRef.current[key] = cleaned
                                       }}
                                       maxLength={5}
                                     />
                                   ) : (
-                                    <Text style={styles.fuelTypePrice}>
-                                      ₱{(Number(selectedStation[key]) || 0).toFixed(2)}
-                                    </Text>
+                                    <Text style={styles.fuelTypePrice}>₱{(Number(selectedStation[key]) || 0).toFixed(2)}</Text>
                                   )}
                                 </View>
                               )
@@ -421,19 +357,12 @@ export function StationDetailModal<T extends StationBase>({
                       {isReporting ? (
                         <>
                           <TouchableOpacity
-                            style={[
-                              styles.pendingFormBtns,
-                              { backgroundColor: colors.childBackground },
-                            ]}
+                            style={[styles.pendingFormBtns, { backgroundColor: colors.childBackground }]}
                             onPress={() => setIsReporting(false)}
                           >
                             <Text style={styles.cancelText}>Cancel</Text>
                           </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[styles.pendingFormBtns, styles.bgPrimary500]}
-                            onPress={handleUpdatePrice}
-                          >
+                          <TouchableOpacity style={[styles.pendingFormBtns, styles.bgPrimary500]} onPress={handleUpdatePrice}>
                             <Text style={{ color: "white", fontWeight: "bold" }}>Submit</Text>
                           </TouchableOpacity>
                         </>
@@ -450,13 +379,8 @@ export function StationDetailModal<T extends StationBase>({
                           >
                             <Text style={{ color: "white", fontWeight: "bold" }}>Directions</Text>
                           </TouchableOpacity>
-
                           <TouchableOpacity
-                            style={[
-                              styles.pendingFormBtns,
-                              styles.bgPrimary500,
-                              selectedStation.fetchError && styles.inline_052,
-                            ]}
+                            style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]}
                             disabled={!!selectedStation.fetchError}
                             onPress={() => setIsReporting(true)}
                           >
@@ -478,14 +402,23 @@ export function StationDetailModal<T extends StationBase>({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  modalOverlay: { flex: 1, justifyContent: "flex-end" },
+
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+
+  backdrop: {
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
 
   detailCard: {
     backgroundColor: colors.background,
     minHeight: 350,
+    width: "100%",
     borderTopLeftRadius: CARD_RADIUS,
     borderTopRightRadius: CARD_RADIUS,
-    overflow: "hidden", // ✅ prevents curved border overlap
+    overflow: "hidden",
   },
 
   dismissHandle: {
@@ -503,10 +436,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.55)",
   },
 
+  // No flexGrow: prevents forcing extra empty space below content.
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    flexGrow: 1,
   },
 
   headerRow: {
@@ -557,7 +490,6 @@ const styles = StyleSheet.create({
     borderColor: colors.palette.neutral200,
   },
 
-  // Reused name, now just acts like padding around the grid
   scrollPriceGrid: {
     paddingVertical: 14,
     paddingHorizontal: 8,
@@ -583,6 +515,7 @@ const styles = StyleSheet.create({
   },
 
   stationDetailBtnWrapper: { paddingTop: 16 },
+
   stationDetailBtnRow: {
     flexDirection: "row",
     gap: 10,
@@ -600,7 +533,6 @@ const styles = StyleSheet.create({
   mt_12: { marginTop: 12 },
   opacity_half: { opacity: 0.5 },
   bgPrimary500: { backgroundColor: colors.palette.primary500 },
-
   inline_015: { color: colors.palette.primary400 },
 
   inline_034: {
@@ -610,6 +542,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FFE58F",
   },
+
   inline_035: { color: "#856404" },
   inline_036: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
 
@@ -623,6 +556,7 @@ const styles = StyleSheet.create({
   },
 
   inline_037: { marginTop: 10, gap: 10 },
+
   inline_038: {
     alignItems: "center",
     padding: 10,
@@ -630,6 +564,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "flex-start",
   },
+
   inline_039: {
     backgroundColor: colors.palette.angry500,
     flexDirection: "row",
@@ -638,13 +573,13 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 45,
   },
+
   inline_040: { color: "#FFFFFF", fontWeight: "bold" },
   inline_041: { gap: 10, marginTop: 10 },
   inline_042: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
   inline_043: { flex: 1, backgroundColor: colors.palette.secondary500 },
   inline_044: { textAlign: "center", color: "white", fontWeight: "bold" },
   inline_045: { flex: 1, backgroundColor: colors.palette.primary500 },
-
   inline_046: { flex: 1, justifyContent: "center", alignItems: "center" },
   inline_047: { marginTop: 8, opacity: 0.5 },
   inline_048: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },

@@ -3,42 +3,34 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  TextInput,
-  View,
-  ViewStyle,
-  TextStyle,
   ScrollView,
   RefreshControl,
+  TextInput,
+  TextStyle,
+  View,
+  ViewStyle,
 } from "react-native"
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming, 
-  FadeInDown, 
-  withSequence, 
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated"
 
 import { Button } from "@/components/Button"
 import { Card } from "@/components/Card"
+import { Icon } from "@/components/Icon"
 import { Screen } from "@/components/Screen"
+import { ScreenHeader } from "@/components/ScreenHeader"
 import { Text } from "@/components/Text"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 import { delay } from "@/utils/delay"
-import { Icon } from "@/components/Icon"
-import { colors } from "@/theme/colors"
-import { ScreenHeader } from "@/components/ScreenHeader"
 
 export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigation }) => {
   const { themed, theme } = useAppTheme()
-
   const [refreshing, setRefreshing] = useState(false)
-  const manualRefresh = async () => {
-    setRefreshing(true)
-    await Promise.allSettled([resetForm(), delay(750)])
-    setRefreshing(false)
-  }
 
   // Form state
   const [distanceKm, setDistanceKm] = useState<string>("")
@@ -63,7 +55,6 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
   const distanceError = hasSubmitted && !isValidNumber(distanceKm)
   const priceError = hasSubmitted && !isValidNumber(fuelPrice)
   const effError = hasSubmitted && !isValidNumber(kmPerLiter)
-
   const canCompute = isValidNumber(distanceKm) && isValidNumber(fuelPrice) && isValidNumber(kmPerLiter)
 
   // Animations
@@ -73,11 +64,25 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     transform: [{ scale: 0.95 + resultProgress.value * 0.05 }],
   }))
 
+  const resetForm = useCallback(() => {
+    setDistanceKm("")
+    setFuelPrice("")
+    setKmPerLiter("")
+    setHasSubmitted(false)
+    setLitersNeeded(null)
+    setTripCost(null)
+    resultProgress.value = 0
+  }, [resultProgress])
+
+  const manualRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await Promise.allSettled([resetForm(), delay(750)])
+    setRefreshing(false)
+  }, [resetForm])
+
   const onCompute = useCallback(async () => {
     setHasSubmitted(true)
-    if (!canCompute) {
-      return
-    }
+    if (!canCompute) return
 
     setIsLoading(true)
     await delay(400)
@@ -94,18 +99,9 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
 
     resultProgress.value = 0
     resultProgress.value = withTiming(1, { duration: 400 })
+
     setIsLoading(false)
   }, [canCompute, distanceKm, fuelPrice, kmPerLiter, resultProgress])
-
-  const resetForm = useCallback(() => {
-    setDistanceKm("")
-    setFuelPrice("")
-    setKmPerLiter("")
-    setHasSubmitted(false)
-    setLitersNeeded(null)
-    setTripCost(null)
-    resultProgress.value = 0
-  }, [resultProgress])
 
   const formatNumber = (n: number | null) => {
     if (n === null) return "0.00"
@@ -115,129 +111,173 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
     }).format(n)
   }
 
-  const formContent = useMemo(() => (
-    <View style={themed($formInner)}>
-      <View style={themed($fieldGroup)}>
-        <Text preset="formLabel" style={themed($label)}>Trip Distance</Text>
-        <View style={[
-          themed($inputFrame), 
-          focused === "distance" && themed($inputFrameFocused),
-          distanceError && themed($inputError)
-        ]}>
-          <Icon 
-            icon="map" 
-            size={20} 
-            color={distanceError ? theme.colors.error : (focused === "distance" ? theme.colors.tint : theme.colors.textDim)} 
-          />
-          <TextInput
-            value={distanceKm}
-            onChangeText={(v) => {
-              setDistanceKm(v)
-              if (hasSubmitted) setHasSubmitted(false)
-            }}
-            onFocus={() => setFocused("distance")}
-            onBlur={() => setFocused(null)}
-            keyboardType="decimal-pad"
-            placeholder="0.0"
-            placeholderTextColor={theme.colors.textDim}
-            style={themed($input)}
-          />
-          <Text style={themed($suffix)}>km</Text>
-        </View>
-        {distanceError && <Text style={themed($errorText)}>Enter a valid distance</Text>}
-      </View>
-
-      {/* Fuel Price Input */}
-      <View style={themed($fieldGroup)}>
-        <Text preset="formLabel" style={themed($label)}>Fuel Price</Text>
-        <View style={[
-          themed($inputFrame), 
-          focused === "price" && themed($inputFrameFocused),
-          priceError && themed($inputError)
-        ]}>
-          <Text style={[themed($prefix), priceError && { color: theme.colors.error }]}>₱</Text>
-          <TextInput
-            value={fuelPrice}
-            onChangeText={(v) => {
-              setFuelPrice(v)
-              if (hasSubmitted) setHasSubmitted(false)
-            }}
-            onFocus={() => setFocused("price")}
-            onBlur={() => setFocused(null)}
-            keyboardType="decimal-pad"
-            placeholder="0.00"
-            placeholderTextColor={theme.colors.textDim}
-            style={themed($input)}
-          />
-          <Text style={themed($suffix)}>per L</Text>
-        </View>
-        {priceError && <Text style={themed($errorText)}>Enter a valid price</Text>}
-      </View>
-
-      {/* Efficiency Input */}
-      <View style={themed($fieldGroup)}>
-        <Text preset="formLabel" style={themed($label)}>Vehicle Fuel Efficiency</Text>
-        <View style={[
-          themed($inputFrame), 
-          focused === "eff" && themed($inputFrameFocused),
-          effError && themed($inputError)
-        ]}>
-          <Icon 
-            icon="settings" 
-            size={20} 
-            color={effError ? theme.colors.error : (focused === "eff" ? theme.colors.tint : theme.colors.textDim)} 
-          />
-          <TextInput
-            value={kmPerLiter}
-            onChangeText={(v) => {
-              setKmPerLiter(v)
-              if (hasSubmitted) setHasSubmitted(false)
-            }}
-            onFocus={() => setFocused("eff")}
-            onBlur={() => setFocused(null)}
-            keyboardType="decimal-pad"
-            placeholder="0.0"
-            placeholderTextColor={theme.colors.textDim}
-            style={themed($input)}
-          />
-          <Text style={themed($suffix)}>km/L</Text>
-        </View>
-        {effError && <Text style={themed($errorText)}>Enter a valid fuel efficiency</Text>}
-      </View>
-
-      <View style={themed($actions)}>
-        <Button
-          preset="filled"
-          onPress={onCompute}
-          style={themed($computeBtn)}
-          pressedStyle={{ opacity: 0.9 }}
-        >
-          <Text style={{ color: "white", fontWeight: "bold" }}>
-            {isLoading ? "Calculating..." : "Calculate Trip"}
+  const formContent = useMemo(
+    () => (
+      <View style={themed($formInner)}>
+        <View style={themed($fieldGroup)}>
+          <Text preset="formLabel" style={themed($label)}>
+            Trip Distance
           </Text>
-        </Button>
-        <Pressable onPress={resetForm} style={themed($resetBtn)}>
-          <Text size="sm" style={{ color: theme.colors.textDim }}>Clear All</Text>
-        </Pressable>
+          <View
+            style={[
+              themed($inputFrame),
+              focused === "distance" && themed($inputFrameFocused),
+              distanceError && themed($inputError),
+            ]}
+          >
+            <Icon
+              icon="map"
+              size={20}
+              color={
+                distanceError
+                  ? theme.colors.error
+                  : focused === "distance"
+                    ? theme.colors.tint
+                    : theme.colors.textDim
+              }
+            />
+            <TextInput
+              value={distanceKm}
+              onChangeText={(v) => {
+                setDistanceKm(v)
+                if (hasSubmitted) setHasSubmitted(false)
+              }}
+              onFocus={() => setFocused("distance")}
+              onBlur={() => setFocused(null)}
+              keyboardType="decimal-pad"
+              placeholder="0.0"
+              placeholderTextColor={theme.colors.textDim}
+              style={themed($input)}
+              returnKeyType="done"
+            />
+            <Text style={themed($suffix)}>km</Text>
+          </View>
+          {distanceError && <Text style={themed($errorText)}>Enter a valid distance</Text>}
+        </View>
+
+        {/* Fuel Price Input */}
+        <View style={themed($fieldGroup)}>
+          <Text preset="formLabel" style={themed($label)}>
+            Fuel Price
+          </Text>
+          <View
+            style={[
+              themed($inputFrame),
+              focused === "price" && themed($inputFrameFocused),
+              priceError && themed($inputError),
+            ]}
+          >
+            <Text style={[themed($prefix), priceError && { color: theme.colors.error }]}>₱</Text>
+            <TextInput
+              value={fuelPrice}
+              onChangeText={(v) => {
+                setFuelPrice(v)
+                if (hasSubmitted) setHasSubmitted(false)
+              }}
+              onFocus={() => setFocused("price")}
+              onBlur={() => setFocused(null)}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={theme.colors.textDim}
+              style={themed($input)}
+              returnKeyType="done"
+            />
+            <Text style={themed($suffix)}>per L</Text>
+          </View>
+          {priceError && <Text style={themed($errorText)}>Enter a valid price</Text>}
+        </View>
+
+        {/* Efficiency Input */}
+        <View style={themed($fieldGroup)}>
+          <Text preset="formLabel" style={themed($label)}>
+            Vehicle Fuel Efficiency
+          </Text>
+          <View
+            style={[
+              themed($inputFrame),
+              focused === "eff" && themed($inputFrameFocused),
+              effError && themed($inputError),
+            ]}
+          >
+            <Icon
+              icon="settings"
+              size={20}
+              color={
+                effError
+                  ? theme.colors.error
+                  : focused === "eff"
+                    ? theme.colors.tint
+                    : theme.colors.textDim
+              }
+            />
+            <TextInput
+              value={kmPerLiter}
+              onChangeText={(v) => {
+                setKmPerLiter(v)
+                if (hasSubmitted) setHasSubmitted(false)
+              }}
+              onFocus={() => setFocused("eff")}
+              onBlur={() => setFocused(null)}
+              keyboardType="decimal-pad"
+              placeholder="0.0"
+              placeholderTextColor={theme.colors.textDim}
+              style={themed($input)}
+              returnKeyType="done"
+            />
+            <Text style={themed($suffix)}>km/L</Text>
+          </View>
+          {effError && <Text style={themed($errorText)}>Enter a valid fuel efficiency</Text>}
+        </View>
+
+        <View style={themed($actions)}>
+          <Button preset="filled" onPress={onCompute} style={themed($computeBtn)} pressedStyle={{ opacity: 0.9 }}>
+            <Text style={{ color: "white", fontWeight: "bold" }}>
+              {isLoading ? "Calculating..." : "Calculate Trip"}
+            </Text>
+          </Button>
+          <Pressable onPress={resetForm} style={themed($resetBtn)}>
+            <Text size="sm" style={{ color: theme.colors.textDim }}>
+              Clear All
+            </Text>
+          </Pressable>
+        </View>
       </View>
-    </View>
-  ), [distanceKm, fuelPrice, kmPerLiter, focused, hasSubmitted, isLoading, themed, theme, distanceError, priceError, effError])
+    ),
+    [
+      themed,
+      theme,
+      focused,
+      hasSubmitted,
+      isLoading,
+      distanceKm,
+      fuelPrice,
+      kmPerLiter,
+      distanceError,
+      priceError,
+      effError,
+      onCompute,
+      resetForm,
+    ],
+  )
 
   return (
-    <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
-      <ScreenHeader 
-        title="Trip cost calculator" 
-        leftIcon="arrow_left" 
-        onLeftPress={() => navigation.goBack()} 
-      />
+    // NOTE: In your original file you used `contentContainerStyle`.
+    // Some Screen implementations (e.g., Ignite-style) don't apply `style` to the fixed preset content.
+    // Keeping `contentContainerStyle` ensures the container is flex:1 and renders correctly.
+    <Screen preset="fixed" contentContainerStyle={themed($screenContainer)}>
+      <ScreenHeader title="Trip cost calculator" leftIcon="arrow_left" onLeftPress={() => navigation.goBack()} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={manualRefresh} />}
+      {/* Single scroll container to avoid keyboard resizing glitches. */}
+      <KeyboardAvoidingView
+        style={themed($mainContainer)}
+        behavior={Platform.select({ ios: "padding", android: "height" })}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.select({ ios: "padding", android: undefined })}
-          style={themed($mainContainer)}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
+          contentContainerStyle={themed($scrollContent)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={manualRefresh} />}
         >
           <Animated.View entering={FadeInDown.duration(400)}>
             <Card style={themed($card)} ContentComponent={formContent} />
@@ -250,11 +290,12 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
                   <Text style={themed($resultLabel)}>Total Fuel</Text>
                   <Text style={themed($resultValue)}>{formatNumber(litersNeeded)} L</Text>
                 </View>
+
                 <View style={themed($resultItem)}>
                   <Text style={themed($resultLabel)}>Estimated Cost</Text>
                   <Text style={[themed($resultValue), { color: theme.colors.tint }]}>₱ {formatNumber(tripCost)}</Text>
                 </View>
-                
+
                 <View style={themed($disclaimerBox)}>
                   <Icon icon="information" size={14} color={theme.colors.textDim} />
                   <Text size="xxs" style={themed($disclaimerText)}>
@@ -264,21 +305,27 @@ export const CalculatorScreen: FC<DemoTabScreenProps<"Calculator">> = ({ navigat
               </View>
             </Animated.View>
           )}
-        </KeyboardAvoidingView>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   )
 }
 
 // --- Styles ---
-
-const $screenContainer: ViewStyle = { flex: 1, backgroundColor: "#F8F9FD" }
-const $headerStyle: ViewStyle = { backgroundColor: "#1737ba", borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }
-const $headerTitle: TextStyle = { color: "#fff", fontWeight: "bold" }
-const $leftActionWrapper: ViewStyle = { marginLeft: 16 }
+const $screenContainer: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  flex: 1,
+  backgroundColor: colors.background,
+})
 
 const $mainContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  padding: spacing.lg,
+  flex: 1,
+  paddingHorizontal: spacing.lg,
+})
+
+const $scrollContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexGrow: 1,
+  paddingTop: spacing.lg,
+  paddingBottom: spacing.xl,
 })
 
 const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
@@ -349,7 +396,7 @@ const $suffix: ThemedStyle<TextStyle> = ({ colors }) => ({
   textTransform: "uppercase",
 })
 
-const $errorText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+const $errorText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.error,
   fontSize: 12,
   marginTop: 4,
@@ -384,12 +431,6 @@ const $resultsWrap: ThemedStyle<ViewStyle> = ({ colors }) => ({
   shadowRadius: 15,
   elevation: 6,
 })
-
-const $resultsHeader: ViewStyle = {
-  backgroundColor: "#1737ba",
-  paddingVertical: 12,
-  alignItems: "center",
-}
 
 const $resultsContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   padding: spacing.lg,
