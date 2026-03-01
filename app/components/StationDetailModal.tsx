@@ -74,6 +74,8 @@ type Props<T extends StationBase> = {
   hasVoted: boolean
   handleVerifyOrDenyPendingMarker: (reportId: string, isConfirm: boolean) => void
   handleCancelMyReport: (reportId: string) => void
+  userHasReported: boolean // Add this
+  onCancelReport: () => void // Add this
 }
 
 export function StationDetailModal<T extends StationBase>({
@@ -92,6 +94,8 @@ export function StationDetailModal<T extends StationBase>({
   hasVoted,
   handleVerifyOrDenyPendingMarker,
   handleCancelMyReport,
+  userHasReported,
+  onCancelReport
 }: Props<T>) {
   const { themed } = useAppTheme()
   const insets = useSafeAreaInsets()
@@ -379,13 +383,41 @@ export function StationDetailModal<T extends StationBase>({
                           >
                             <Text style={{ color: "white", fontWeight: "bold" }}>Directions</Text>
                           </TouchableOpacity>
+
+                          {/* {userHasReported ? (
+                            // If user already reported, show RED CANCEL button
+                            <TouchableOpacity
+                              style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]}
+                              disabled={!!selectedStation.fetchError}
+                              onPress={userHasReported ? onCancelReport : () => setIsReporting(true)}
+                            >
+                              <Text style={{ color: "white", fontWeight: "bold" }}>{userHasReported ? 'Cancel My Report' : 'Update Price' }</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            // Otherwise, show standard UPDATE button
+                            <TouchableOpacity
+                              style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]}
+                              disabled={!!selectedStation.fetchError}
+                              onPress={() => setIsReporting(true)}
+                            >
+                              <Text style={{ color: "white", fontWeight: "bold" }}>Update Price</Text>
+                            </TouchableOpacity>
+                          )} */}
                           <TouchableOpacity
+                            style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]}
+                            disabled={!!selectedStation.fetchError}
+                            onPress={userHasReported ? onCancelReport : () => setIsReporting(true)}
+                          >
+                            <Text style={{ color: "white", fontWeight: "bold" }}>{userHasReported ? 'Cancel My Report' : 'Update Price' }</Text>
+                          </TouchableOpacity>
+
+                          {/* <TouchableOpacity
                             style={[styles.pendingFormBtns, styles.bgPrimary500, selectedStation.fetchError && styles.inline_052]}
                             disabled={!!selectedStation.fetchError}
                             onPress={() => setIsReporting(true)}
                           >
                             <Text style={{ color: "white", fontWeight: "bold" }}>Update Price</Text>
-                          </TouchableOpacity>
+                          </TouchableOpacity> */}
                         </>
                       )}
                     </View>

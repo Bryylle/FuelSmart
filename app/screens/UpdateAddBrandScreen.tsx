@@ -4,13 +4,14 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   TextInput,
   View,
   ViewStyle,
   TextStyle,
+  TouchableOpacity,
+  PixelRatio,
 } from "react-native"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
@@ -23,8 +24,8 @@ import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { spacing } from "@/theme/spacing"
 import type { ThemedStyle } from "@/theme/types"
-import { delay } from "@/utils/delay"
 import { supabase } from "@/services/supabase"
+import { colors } from "@/theme/colors"
 
 // ✅ Same concept as MapScreen: fuel switches are derived from the in-app mapping,
 // not from the DB config row.
@@ -43,15 +44,16 @@ import { initFuelMappings, FUEL_BRAND_MAP } from "@/utils/fuelMappings"
 
 // ---- Configure these to match your Supabase schema ----
 const BRAND_CONFIG_TABLE = "fuel_brand_configs" // TODO: change if your table name differs
-const BRAND_UNIQUE_COL = "brand" // TODO: unique column used for upsert
+const BRAND_UNIQUE_COL = "brand_name" // TODO: unique column used for upsert
+const HAIRLINE        = 1 / PixelRatio.get()
 
 // These column names are intentionally aligned with FUEL_BRAND_MAP keys in the app.
 const COLS = {
-  regular_gas: "regular_gas",
-  premium_gas: "premium_gas",
-  sports_gas: "sports_gas",
-  regular_diesel: "regular_diesel",
-  premium_diesel: "premium_diesel",
+  regular_gas: "regular_gas_label",
+  premium_gas: "premium_gas_label",
+  sports_gas: "sports_gas_label",
+  regular_diesel: "regular_diesel_label",
+  premium_diesel: "premium_diesel_label",
 } as const
 
 type FuelKey = keyof typeof COLS
@@ -116,8 +118,8 @@ const FuelToggleField = React.memo(
   }: any) => {
     return (
       <View style={themedStyles.$inputWrapper}>
-        <View style={$rowJustify}>
-          <Text preset="formLabel" text={label} size="md" style={[disabled && { opacity: 0.5 }]} />
+        <View style={$toggleRow}>
+          <Text preset="formLabel" text={label} style={[disabled && { opacity: 0.5 }, { flex: 1 }]} />
           <Switch value={enabled} onValueChange={onToggle} disabled={disabled} />
         </View>
         {enabled && (
@@ -181,11 +183,30 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
     }
   }, [fuelMappingsReady])
 
+  const handleClearForm = () => {
+    Alert.alert(
+      "Clear Form",
+      "Are you sure you want to reset all fields?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear", style: "destructive", onPress: () => {
+            setForm(defaultForm);
+            setIsExistingBrand(false);
+          } 
+        }
+      ]
+    )
+  }
+
   const loadBrands = useCallback(async () => {
-    // Fetch unique brands from fuel_stations (same idea as MapScreen)
-    const { data, error } = await supabase.from("fuel_stations").select("brand")
+    // Fetching from the config table ensures newly created brands show up immediately
+    const { data, error } = await supabase
+      .from(BRAND_CONFIG_TABLE)
+      .select(BRAND_UNIQUE_COL)
+
     if (error) throw error
-    const unique = Array.from(new Set((data ?? []).map((s: any) => s.brand).filter(Boolean))).sort()
+    
+    const unique = Array.from(new Set((data ?? []).map((s: any) => s[BRAND_UNIQUE_COL]).filter(Boolean))).sort()
     setAvailableBrands(unique)
   }, [])
 
@@ -325,15 +346,20 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
 
       Alert.alert("Success", "Brand configuration saved!")
 
-      // Refresh brand list (optional)
-      await Promise.allSettled([initialize(true), delay(350)])
+      // ✅ FIX: Reset the UI state to empty
+      setForm(defaultForm)
+      setIsExistingBrand(false)
+
+      // ✅ FIX: Refresh the availableBrands list so the new brand appears in the modal
+      await loadBrands()
+
     } catch (e: any) {
       console.error("Save failed:", e)
       Alert.alert("Failed", e?.message ?? "Could not save brand configuration.")
     } finally {
       setSaving(false)
     }
-  }, [form, validate, initialize])
+  }, [form, validate, loadBrands]) // Added loadBrands to dependencies
 
   return (
     <Screen preset="scroll" contentContainerStyle={themed($screenContainer)}>
@@ -363,17 +389,10 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
               <View style={themedStyles.$inputWrapper}>
                 <Text preset="formLabel" text="Brand" />
 
-                <Pressable onPress={() => setIsBrandPickerVisible(true)}>
-                  <View pointerEvents="none">
-                    <TextInput
-                      style={themedStyles.$input}
-                      value={form.brand}
-                      placeholder="Select or Type Brand"
-                      placeholderTextColor={colors.textDim}
-                      editable={false}
-                    />
-                  </View>
-                </Pressable>
+                <TouchableOpacity style={$modalTriggerBtn} onPress={() => setIsBrandPickerVisible(true)}>
+                  <Text size="sm" numberOfLines={1}>{form.brand.length > 0 ? form.brand : "Select or enter new brand"}</Text>
+                  <Icon icon="caret_right" size={20} />
+                </TouchableOpacity>
 
                 <Text size="xxs" style={themedStyles.$muted}>
                   {isExistingBrand
@@ -432,13 +451,18 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
                 disabled={saving}
                 RightAccessory={() => (saving ? <ActivityIndicator color="#fff" /> : null)}
               >
-                <Text
-                  text={saving ? "Saving..." : "Save Changes"}
-                  size="md"
-                  style={{ color: "#fff" }}
-                  preset="bold"
-                />
+                <Text text={saving ? "Saving..." : "Save Changes"} size="md" style={{ color: "#fff" }} preset="bold" />
               </Button>
+
+              {/* NEW CLEAR BUTTON */}
+              {!saving && (
+                <TouchableOpacity
+                  onPress={handleClearForm}
+                  style={{ marginTop: spacing.md, justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <Text text="Clear Form" size="sm" style={{ color: colors.error }} />
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={{ height: 24 }} />
@@ -450,6 +474,14 @@ export const UpdateAddBrandScreen: FC<DemoTabScreenProps<"UpdateAddBrand">> = ({
 }
 
 // #region STYLES
+const $modalTriggerBtn: ViewStyle = { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.childBackground, borderRadius: 8, padding: 12, marginTop: 8 }
+const $toggleRow: ViewStyle = {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: HAIRLINE,
+    borderBottomColor: "#EEE",
+}
 const $screenContainer: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
 
 const $card: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({

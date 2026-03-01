@@ -257,6 +257,17 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
         isLoading: false,
         fetchError: false
       })
+
+      if (loggedInUser) {
+        const { data } = await supabase
+          .from('fuel_reports')
+          .select('id')
+          .eq('station_id', stationId)
+          .eq('user_id', loggedInUser.id)
+          .maybeSingle()
+        
+        setUserHasReported(!!data)
+      }
     } catch (e) {
       console.error("Fetch Error:", e)
       setSelectedStation(prev => ({ 
@@ -274,47 +285,54 @@ export const MapScreen: FC<DemoTabScreenProps<"Map">> = ({ navigation }) => {
     setIsContributorModalVisible(true)
   }
 
+  const [userHasReported, setUserHasReported] = useState(false);
   const priceInputsRef = useRef<Record<string, string>>({});
   const [isReporting, setIsReporting] = useState(false)
   const handleUpdatePrice = async () => {
-    if (!selectedStation || !loggedInUser) {
-      Alert.alert("Error", "User or Station information is missing.");
-      return;
-    }
-
-    const getValidPrice = (key: string) => {
-      const input = priceInputsRef.current[key];
-      if (input && input.trim() !== "") {
-        const parsed = parseFloat(input);
-        if (!isNaN(parsed)) return parsed;
-      }
-      return Number(selectedStation[key]) || 0;
-    };
+    if (!selectedStation || !loggedInUser) return
 
     const rpcData = {
       _station_id: selectedStation.id,
       _user_id: loggedInUser.id,
-      _regular_gas: getValidPrice("regular_gas"),
-      _premium_gas: getValidPrice("premium_gas"),
-      _sports_gas: getValidPrice("sports_gas"),
-      _regular_diesel: getValidPrice("regular_diesel"),
-      _premium_diesel: getValidPrice("premium_diesel"),
-    };
+      _regular_gas: parseFloat(priceInputsRef.current["regular_gas"]) || 0,
+      _premium_gas: parseFloat(priceInputsRef.current["premium_gas"]) || 0,
+      _sports_gas: parseFloat(priceInputsRef.current["sports_gas"]) || 0,
+      _regular_diesel: parseFloat(priceInputsRef.current["regular_diesel"]) || 0,
+      _premium_diesel: parseFloat(priceInputsRef.current["premium_diesel"]) || 0,
+    }
 
     try {
-      const { error } = await supabase.rpc('submit_fuel_report', rpcData);
-      if (error) {
-        Alert.alert("Update Failed", error.message);
-      } else {
-        Alert.alert("Success", "Station prices updated!");
-        setIsReporting(false);
-        priceInputsRef.current = {};
-        setSelectedStation(null);
-      }
+      const { error } = await supabase.rpc('submit_fuel_report', rpcData)
+      if (error) throw error
+
+      Alert.alert("Thank you", "Your price submission is pending community verification.")
+      
+      setUserHasReported(true)
+      setIsReporting(false)
+      fetchStations(region)
     } catch (err) {
-      Alert.alert("Error", "A connection error occurred.");
+      Alert.alert("Error", "Something went wrong, could not submit report.")
     }
-  };
+  }
+  const handleDeleteReport = async () => {
+    if (!selectedStation || !loggedInUser) return
+
+    try {
+      const { error } = await supabase
+        .from('fuel_reports')
+        .delete()
+        .eq('station_id', selectedStation.id)
+        .eq('user_id', loggedInUser.id)
+
+      if (error) throw error
+
+      Alert.alert("Success", "Your report has been removed.")
+      setUserHasReported(false)
+      setIsReporting(false)
+    } catch (err) {
+      Alert.alert("Error", "Something went wrong, could not delete report.")
+    }
+  }
 
   const [favorites, setFavorites] = useState<string[]>([])
   const toggleFavorite = async () => {
@@ -967,7 +985,6 @@ toolbarEnabled={false}
               )}
             </Pressable>
           </View>
-              {/* fsd */}
           {isFilterVisible && (
             <Animated.View entering={FadeInUp} exiting={FadeOutUp} style={styles.filterDropdown}>
               <>
@@ -1114,6 +1131,8 @@ toolbarEnabled={false}
         hasVoted={hasVoted}
         handleVerifyOrDenyPendingMarker={handleVerifyOrDenyPendingMarker}
         handleCancelMyReport={handleCancelMyReport}
+        userHasReported={userHasReported} 
+        onCancelReport={handleDeleteReport}
       />
       {/* --STATION CARD DETAIL MODAL*/}
       {/* --CONTRIBUTOR MODAL */}
